@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Kreait\Firebase\Factory;
+use Google\Cloud\Firestore\FieldPath;
 
 class FirebaseOrderController extends Controller
 {
@@ -21,76 +22,96 @@ class FirebaseOrderController extends Controller
 
     public function index(Request $request)
     {
-        // Optional filters
-        $statusFilter = $request->query('status', null);
-        $vendorID = $request->query('vendorID', null);
+        $statusFilter = $request->query('status');
+        $vendorID = $request->query('vendorID');
+        $cursor = $request->query('cursor'); // documentId to start after
+        $limit = (int) $request->query('limit', 10);
+        $withCounts = (int) $request->query('with_counts', 0) === 1;
 
-        // Pagination setup
-        $page = (int) $request->query('page', 1);
-        $limit = 10;
-        $offset = ($page - 1) * $limit;
+        $cacheKey = "firebase_orders_v2_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any') . "_cursor_" . ($cursor ?: 'start') . "_limit_{$limit}";
 
-        $cacheKey = "firebase_orders_all_fields_{$statusFilter}_{$vendorID}_page_{$page}";
+        $data = Cache::remember($cacheKey, 30, function () use ($statusFilter, $vendorID, $cursor, $limit) {
+            $query = $this->firestore->collection('restaurant_orders')->orderBy(FieldPath::documentId());
 
-        $data = Cache::remember($cacheKey, 5, function () use ($request, $statusFilter, $vendorID, $limit, $offset) {
-            $collection = $this->firestore->collection('restaurant_orders');
-            $documents = $collection->documents();
+            if (!empty($statusFilter)) {
+                $query = $query->where('status', '==', $statusFilter);
+            }
+
+            if (!empty($vendorID)) {
+                $query = $query->where('vendorID', '==', $vendorID);
+            }
+
+            if (!empty($cursor)) {
+                $query = $query->startAfter([$cursor]);
+            }
+
+            $query = $query->limit($limit);
+
+            $documents = $query->documents();
 
             $orders = [];
-            $total = 0;
-            $activeOrders = 0;
-            $completed = 0;
-            $pending = 0;
-            $cancelled = 0;
+            $nextCursor = null;
 
             foreach ($documents as $document) {
-                $data = $document->data();
-                $data['id'] = $document->id();
+                $row = $document->data();
+                $row['id'] = $document->id();
 
-                array_walk_recursive($data, function (&$value) {
+                array_walk_recursive($row, function (&$value) {
                     if (is_float($value) && (is_nan($value) || is_infinite($value))) {
                         $value = 0;
                     }
                 });
 
-                $orders[] = $data;
-                $total++;
+                $orders[] = $row;
+                $nextCursor = $document->id();
+            }
 
-                if (isset($data['status'])) {
-                    $status = strtolower(trim($data['status']));
+            return [
+                'orders' => $orders,
+                'next_cursor' => $nextCursor,
+            ];
+        });
 
+        // Optional counters (cached)
+        $countersCacheKey = "firebase_orders_counts_v2_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any');
+        $counters = Cache::get($countersCacheKey);
+        if ($withCounts) {
+            $counters = Cache::remember($countersCacheKey, 120, function () use ($statusFilter, $vendorID) {
+                $base = $this->firestore->collection('restaurant_orders');
+                if (!empty($statusFilter)) {
+                    $base = $base->where('status', '==', $statusFilter);
+                }
+                if (!empty($vendorID)) {
+                    $base = $base->where('vendorID', '==', $vendorID);
+                }
+
+                $total = 0; $activeOrders = 0; $completed = 0; $pending = 0; $cancelled = 0;
+                foreach ($base->select(['__name__', 'status'])->documents() as $doc) {
+                    $total++;
+                    $status = strtolower(trim((string) ($doc->data()['status'] ?? '')));
                     if (in_array($status, ['order placed', 'order accepted', 'order shipped', 'in transit', 'driver pending'])) {
                         $activeOrders++;
                     }
-
                     if ($status === 'order completed') {
                         $completed++;
                     }
-
                     if (in_array($status, ['order placed', 'driver pending', 'in transit'])) {
                         $pending++;
                     }
-
                     if (in_array($status, ['order rejected', 'driver rejected', 'order cancelled', 'cancelled'])) {
                         $cancelled++;
                     }
                 }
-            }
 
-            // Apply pagination
-            $pagedOrders = array_slice($orders, $offset, $limit);
-
-            return [
-                'orders' => $pagedOrders,
-                'counters' => [
+                return [
                     'total' => $total,
                     'activeOrders' => $activeOrders,
                     'completed' => $completed,
                     'pending' => $pending,
                     'cancelled' => $cancelled,
-                ]
-            ];
-        });
+                ];
+            });
+        }
 
         $counters = $data['counters'] ?? [
             'total' => 0,
@@ -104,15 +125,15 @@ class FirebaseOrderController extends Controller
             'status' => true,
             'message' => 'Orders fetched successfully',
             'meta' => [
-                'page' => $page,
                 'limit' => $limit,
                 'count' => count($data['orders']),
-                'total_orders' => $counters['total'],
-                'active_orders' => $counters['activeOrders'],
-                'completed_orders' => $counters['completed'],
-                'pending_orders' => $counters['pending'],
-                'cancelled_orders' => $counters['cancelled'],
+                'cursor' => $cursor,
+                'next_cursor' => $data['next_cursor'],
+                'status' => $statusFilter,
+                'vendorID' => $vendorID,
+                'with_counts' => $withCounts,
             ],
+            'counters' => $counters,
             'data' => $data['orders'],
         ]);
     }

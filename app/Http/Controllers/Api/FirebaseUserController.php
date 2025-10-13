@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Kreait\Firebase\Factory;
 use Illuminate\Support\Facades\Cache;
+use Google\Cloud\Firestore\FieldPath;
 
 class FirebaseUserController extends Controller
 {
@@ -22,8 +23,10 @@ class FirebaseUserController extends Controller
     public function index(Request $request)
     {
         $role = $request->query('role', null);
-//        $limit = (int) $request->query('limit', 10);
-//        $pageToken = $request->query('page_token', null);
+        $page = (int) $request->query('page', 1); // kept for backward compatibility in meta
+        $limit = (int) $request->query('limit', 10);
+        $cursor = $request->query('cursor'); // Firestore document ID to start after
+        $withCounts = (int) $request->query('with_counts', 0) === 1;
 
         if (!$role) {
             return response()->json([
@@ -32,59 +35,73 @@ class FirebaseUserController extends Controller
             ], 400);
         }
 
-        $cacheKey = "firebase_users_all_fields_{$role}";
+        $cacheKey = "firebase_users_page_role_{$role}_cursor_" . ($cursor ?: 'start') . "_limit_{$limit}";
 
-        $data = Cache::remember($cacheKey, 5, function () use ($request, $role) {
-            $collection = $this->firestore->collection('users')
-                ->where('role', '==', $role);
+        $data = Cache::remember($cacheKey, 30, function () use ($role, $cursor, $limit) {
+            $query = $this->firestore
+                ->collection('users')
+                ->where('role', '==', $role)
+                ->orderBy(FieldPath::documentId());
 
-            $documents = $collection->documents();
+            if (!empty($cursor)) {
+                $query = $query->startAfter([$cursor]);
+            }
+
+            $query = $query->limit($limit);
+
+            $documents = $query->documents();
+
             $users = [];
-            $lastDoc = null;
-
-            // Initialize counters
-            $total = 0;
-            $active = 0;
-            $inactive = 0;
-            $documentVerified = 0;
+            $nextCursor = null;
 
             foreach ($documents as $document) {
                 $docData = $document->data();
                 $docData['id'] = $document->id();
-
                 $users[] = $docData;
-                $lastDoc = $document;
-
-                // Counting logic
-                $total++;
-
-                if (isset($docData['active']) && $docData['active'] === true) {
-                    $active++;
-                } else {
-                    $inactive++;
-                }
-
-                if (!empty($docData['isDocumentVerify']) && $docData['isDocumentVerify'] === true) {
-                    $documentVerified++;
-                }
+                $nextCursor = $document->id();
             }
-            // ✅ Simple Laravel-style pagination (limit = 10 per page)
-            $page = (int) $request->query('page', 1);
-            $limit = 10;
-            $offset = ($page - 1) * $limit;
-
-            $pagedOrders = array_slice($users, $offset, $limit);
 
             return [
                 'users' => $users,
-                'counts' => [
+                'next_cursor' => $nextCursor,
+            ];
+        });
+
+        // Counts: compute on-demand or return cached values to keep response fast
+        $countsCacheKey = "firebase_users_counts_role_{$role}";
+        $counts = Cache::get($countsCacheKey);
+        if ($withCounts) {
+            $counts = Cache::remember($countsCacheKey, 120, function () use ($role) {
+                $base = $this->firestore->collection('users')->where('role', '==', $role);
+
+                // total
+                $total = 0;
+                foreach ($base->select(['__name__'])->documents() as $doc) {
+                    $total++;
+                }
+
+                // active
+                $active = 0;
+                foreach ($base->where('active', '==', true)->select(['__name__'])->documents() as $doc) {
+                    $active++;
+                }
+
+                // document verified
+                $documentVerified = 0;
+                foreach ($base->where('isDocumentVerify', '==', true)->select(['__name__'])->documents() as $doc) {
+                    $documentVerified++;
+                }
+
+                $inactive = max($total - $active, 0);
+
+                return [
                     'total' => $total,
                     'active' => $active,
                     'inactive' => $inactive,
                     'document_verified' => $documentVerified,
-                ],
-            ];
-        });
+                ];
+            });
+        }
 
         return response()->json([
             'status' => true,
@@ -93,8 +110,12 @@ class FirebaseUserController extends Controller
                 'role' => $role,
                 'limit' => $limit,
                 'count' => count($data['users']),
+                'page' => $page,
+                'cursor' => $cursor,
+                'next_cursor' => $data['next_cursor'],
+                'with_counts' => $withCounts,
             ],
-            'counts' => $data['counts'],
+            'counts' => $counts,
             'data' => $data['users'],
         ]);
     }
