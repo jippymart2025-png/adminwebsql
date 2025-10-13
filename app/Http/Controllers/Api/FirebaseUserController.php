@@ -22,8 +22,8 @@ class FirebaseUserController extends Controller
     public function index(Request $request)
     {
         $role = $request->query('role', null);
-        $limit = (int) $request->query('limit', 10);
-        $pageToken = $request->query('page_token', null);
+//        $limit = (int) $request->query('limit', 10);
+//        $pageToken = $request->query('page_token', null);
 
         if (!$role) {
             return response()->json([
@@ -32,16 +32,11 @@ class FirebaseUserController extends Controller
             ], 400);
         }
 
-        $cacheKey = "firebase_users_all_fields_{$role}_{$pageToken}_{$limit}";
+        $cacheKey = "firebase_users_all_fields_{$role}";
 
-        $data = Cache::remember($cacheKey, 5, function () use ($role, $limit, $pageToken) {
+        $data = Cache::remember($cacheKey, 5, function () use ($request, $role) {
             $collection = $this->firestore->collection('users')
-                ->where('role', '==', $role)
-                ->limit($limit);
-
-            if ($pageToken) {
-                $collection = $collection->startAfter([$pageToken]);
-            }
+                ->where('role', '==', $role);
 
             $documents = $collection->documents();
             $users = [];
@@ -73,12 +68,15 @@ class FirebaseUserController extends Controller
                     $documentVerified++;
                 }
             }
+            // ✅ Simple Laravel-style pagination (limit = 10 per page)
+            $page = (int) $request->query('page', 1);
+            $limit = 10;
+            $offset = ($page - 1) * $limit;
 
-            $nextPageToken = $lastDoc ? $lastDoc->id() : null;
+            $pagedOrders = array_slice($users, $offset, $limit);
 
             return [
                 'users' => $users,
-                'next_page_token' => $nextPageToken,
                 'counts' => [
                     'total' => $total,
                     'active' => $active,
@@ -94,7 +92,6 @@ class FirebaseUserController extends Controller
             'meta' => [
                 'role' => $role,
                 'limit' => $limit,
-                'next_page_token' => $data['next_page_token'],
                 'count' => count($data['users']),
             ],
             'counts' => $data['counts'],
