@@ -21,27 +21,22 @@ class FirebaseOrderController extends Controller
 
     public function index(Request $request)
     {
-        $limit = (int) $request->query('limit', 10); // default 50 orders per page
-        $pageToken = $request->query('page_token', null);    // For pagination
-
-        // Optional: filter by status or vendorID if you want
-        $statusFilter = $request->query('status', null); // Renamed to avoid conflict
+        // Optional filters
+        $statusFilter = $request->query('status', null);
         $vendorID = $request->query('vendorID', null);
 
-        $cacheKey = "firebase_orders_all_fields_{$pageToken}_{$limit}_{$statusFilter}_{$vendorID}";
+        // Pagination setup
+        $page = (int) $request->query('page', 1);
+        $limit = 10;
+        $offset = ($page - 1) * $limit;
 
-        $data = Cache::remember($cacheKey, 5, function () use ($limit, $pageToken, $statusFilter, $vendorID) {
-            $collection = $this->firestore->collection('restaurant_orders')->limit($limit);
+        $cacheKey = "firebase_orders_all_fields_{$statusFilter}_{$vendorID}_page_{$page}";
 
-            if ($pageToken) {
-                $collection = $collection->startAfter([$pageToken]);
-            }
-
+        $data = Cache::remember($cacheKey, 5, function () use ($request, $statusFilter, $vendorID, $limit, $offset) {
+            $collection = $this->firestore->collection('restaurant_orders');
             $documents = $collection->documents();
-            $orders = [];
-            $lastDoc = null;
 
-            // Initialize counters inside the closure
+            $orders = [];
             $total = 0;
             $activeOrders = 0;
             $completed = 0;
@@ -52,7 +47,6 @@ class FirebaseOrderController extends Controller
                 $data = $document->data();
                 $data['id'] = $document->id();
 
-                // Convert any NaN or Inf to 0 (or null if you prefer)
                 array_walk_recursive($data, function (&$value) {
                     if (is_float($value) && (is_nan($value) || is_infinite($value))) {
                         $value = 0;
@@ -60,11 +54,8 @@ class FirebaseOrderController extends Controller
                 });
 
                 $orders[] = $data;
-                $lastDoc = $document;
-
                 $total++;
 
-                // ✅ Check order status - FIXED: Use $data instead of undefined $docData
                 if (isset($data['status'])) {
                     $status = strtolower(trim($data['status']));
 
@@ -86,12 +77,12 @@ class FirebaseOrderController extends Controller
                 }
             }
 
-            $nextPageToken = $lastDoc ? $lastDoc->id() : null;
+            // Apply pagination
+            $pagedOrders = array_slice($orders, $offset, $limit);
 
             return [
-                'orders' => $orders,
-                'next_page_token' => $nextPageToken,
-                'counters' => [ // Return counters so they're available outside closure
+                'orders' => $pagedOrders,
+                'counters' => [
                     'total' => $total,
                     'activeOrders' => $activeOrders,
                     'completed' => $completed,
@@ -101,7 +92,6 @@ class FirebaseOrderController extends Controller
             ];
         });
 
-        // Extract counters from the cached data
         $counters = $data['counters'] ?? [
             'total' => 0,
             'activeOrders' => 0,
@@ -114,8 +104,8 @@ class FirebaseOrderController extends Controller
             'status' => true,
             'message' => 'Orders fetched successfully',
             'meta' => [
+                'page' => $page,
                 'limit' => $limit,
-                'next_page_token' => $data['next_page_token'],
                 'count' => count($data['orders']),
                 'total_orders' => $counters['total'],
                 'active_orders' => $counters['activeOrders'],
@@ -126,4 +116,4 @@ class FirebaseOrderController extends Controller
             'data' => $data['orders'],
         ]);
     }
-}
+    }
