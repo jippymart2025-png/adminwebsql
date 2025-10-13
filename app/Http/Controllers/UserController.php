@@ -754,12 +754,78 @@ class UserController extends Controller
     public function downloadTemplate()
     {
         $filePath = storage_path('app/templates/users_import_template.xlsx');
-        if (!file_exists($filePath)) {
-            abort(404, 'Template file not found');
+        $templateDir = dirname($filePath);
+        
+        // Create template directory if it doesn't exist
+        if (!is_dir($templateDir)) {
+            mkdir($templateDir, 0755, true);
         }
+        
+        // Generate template if it doesn't exist
+        if (!file_exists($filePath)) {
+            $this->generateUsersTemplate($filePath);
+        }
+        
         return response()->download($filePath, 'users_import_template.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="users_import_template.xlsx"'
         ]);
+    }
+
+    /**
+     * Generate Excel template for users import
+     */
+    private function generateUsersTemplate($filePath)
+    {
+        try {
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            // Set headers
+            $headers = [
+                'A1' => 'firstName',
+                'B1' => 'lastName',
+                'C1' => 'email',
+                'D1' => 'password',
+                'E1' => 'zone',
+                'F1' => 'active',
+                'G1' => 'role',
+                'H1' => 'profilePictureURL',
+                'I1' => 'createdAt'
+            ];
+            
+            foreach ($headers as $cell => $value) {
+                $sheet->setCellValue($cell, $value);
+                $sheet->getStyle($cell)->getFont()->setBold(true);
+            }
+            
+            // Add sample data
+            $sampleData = [
+                'John',
+                'Doe',
+                'john.doe@example.com',
+                'password123',
+                'zoneId123',
+                'true',
+                'customer',
+                'https://example.com/profile.jpg',
+                date('Y-m-d H:i:s')
+            ];
+            
+            $sheet->fromArray([$sampleData], null, 'A2');
+            
+            // Auto-size columns
+            foreach (range('A', 'I') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+            // Save the file
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save($filePath);
+            
+        } catch (\Exception $e) {
+            \Log::error('Failed to generate users template: ' . $e->getMessage());
+            abort(500, 'Failed to generate template');
+        }
     }
 }

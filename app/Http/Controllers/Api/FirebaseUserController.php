@@ -24,8 +24,6 @@ class FirebaseUserController extends Controller
         $role = $request->query('role', null);
         $limit = (int) $request->query('limit', 10);
         $page = (int) $request->query('page', 1);
-        $lastCreatedAt = $request->query('last_created_at'); // Unix timestamp for cursor
-        $lastDocId = $request->query('last_doc_id'); // Document ID for tie-breaking
 
         if (!$role || !in_array($role, ['customer', 'vendor', 'driver'])) {
             return response()->json([
@@ -34,52 +32,56 @@ class FirebaseUserController extends Controller
             ], 400);
         }
 
-        $cacheKey = "firebase_users_v3_role_{$role}_page_{$page}_last_" . ($lastCreatedAt ?: 'start') . "_" . ($lastDocId ?: 'start') . "_limit_{$limit}";
+        // Calculate offset for page-based pagination
+        $offset = ($page - 1) * $limit;
 
-        $data = Cache::remember($cacheKey, 30, function () use ($role, $limit, $lastCreatedAt, $lastDocId) {
+        $cacheKey = "firebase_users_v4_role_{$role}_page_{$page}_limit_{$limit}";
+
+        $data = Cache::remember($cacheKey, 30, function () use ($role, $limit, $offset, $page) {
             $query = $this->firestore
                 ->collection('users')
                 ->where('role', '==', $role)
                 ->orderBy('createdAt', 'DESCENDING');
 
-            // Cursor-based pagination using createdAt timestamp
-            if (!empty($lastCreatedAt) && !empty($lastDocId)) {
-                // Get the reference document for startAfter
-                $lastDoc = $this->firestore->collection('users')->document($lastDocId)->snapshot();
-                if ($lastDoc->exists()) {
-                    $query = $query->startAfter([$lastDoc]);
-                }
-            }
-
-            $query = $query->limit($limit + 1); // Fetch one extra to check if there's a next page
+            // For page-based pagination, we need to fetch all documents up to current page
+            // and then slice the results (Firestore doesn't support offset directly)
+            $totalToFetch = $offset + $limit + 1; // +1 to check if there's more
+            $query = $query->limit($totalToFetch);
 
             $documents = $query->documents();
 
+            $allUsers = [];
+            $count = 0;
+
+            foreach ($documents as $document) {
+                $allUsers[] = [
+                    'data' => $document->data(),
+                    'id' => $document->id(),
+                ];
+                $count++;
+            }
+
+            // Skip to the offset position
             $users = [];
             $hasMore = false;
             $nextCreatedAt = null;
             $nextDocId = null;
-            $count = 0;
 
-            foreach ($documents as $document) {
-                $count++;
-                
-                if ($count > $limit) {
-                    $hasMore = true;
-                    break;
-                }
-
-                $docData = $document->data();
-                $docId = $document->id();
+            for ($i = $offset; $i < count($allUsers) && $i < $offset + $limit; $i++) {
+                $docData = $allUsers[$i]['data'];
+                $docId = $allUsers[$i]['id'];
 
                 // Transform data based on role
                 $userData = $this->transformUserData($role, $docData, $docId);
                 $users[] = $userData;
 
-                // Store last document info for next cursor
+                // Store last document info for next page
                 $nextCreatedAt = $docData['createdAt'] ?? null;
                 $nextDocId = $docId;
             }
+
+            // Check if there are more results beyond current page
+            $hasMore = count($allUsers) > ($offset + $limit);
 
             return [
                 'users' => $users,
@@ -89,26 +91,13 @@ class FirebaseUserController extends Controller
             ];
         });
 
-        // Get total count (cached separately for performance)
-        $totalCount = null;
-        $countsCacheKey = "firebase_users_total_count_role_{$role}";
+        // Get detailed statistics (cached separately for performance)
+        // Always fetch statistics regardless of page or limit
+        $countsCacheKey = "firebase_users_statistics_v2_role_{$role}";
         
-        // Only compute total on first page or if explicitly requested
-        if ($page === 1 || $request->query('with_total') === '1') {
-            $totalCount = Cache::remember($countsCacheKey, 300, function () use ($role) {
-                $snapshot = $this->firestore
-                    ->collection('users')
-                    ->where('role', '==', $role)
-                    ->select(['__name__'])
-                    ->documents();
-                
-                $count = 0;
-                foreach ($snapshot as $doc) {
-                    $count++;
-                }
-                return $count;
-            });
-        }
+        $statistics = Cache::remember($countsCacheKey, 300, function () use ($role) {
+            return $this->getDetailedStatistics($role);
+        });
 
         return response()->json([
             'status' => true,
@@ -118,13 +107,85 @@ class FirebaseUserController extends Controller
                 'page' => $page,
                 'limit' => $limit,
                 'count' => count($data['users']),
-                'total' => $totalCount,
                 'has_more' => $data['has_more'],
                 'next_created_at' => $data['next_created_at'],
                 'next_doc_id' => $data['next_doc_id'],
             ],
+            'statistics' => $statistics,
             'data' => $data['users'],
         ]);
+    }
+
+    /**
+     * Get detailed statistics for users by role
+     * 
+     * @param string $role
+     * @return array
+     */
+    private function getDetailedStatistics(string $role): array
+    {
+        $snapshot = $this->firestore
+            ->collection('users')
+            ->where('role', '==', $role)
+            ->documents();
+
+        $total = 0;
+        $active = 0;
+        $inactive = 0;
+        $verified = 0;
+
+        foreach ($snapshot as $doc) {
+            $data = $doc->data();
+            $total++;
+
+            // Count active/inactive
+            $isActive = $data['active'] ?? false;
+            if ($isActive) {
+                $active++;
+            } else {
+                $inactive++;
+            }
+
+            // Count verified (for vendors and drivers)
+            if (in_array($role, ['vendor', 'driver'])) {
+                $isVerified = $data['isDocumentVerify'] ?? false;
+                if ($isVerified) {
+                    $verified++;
+                }
+            }
+        }
+
+        // Build statistics based on role
+        $stats = [
+            'total' => $total,
+            'active' => $active,
+            'inactive' => $inactive,
+        ];
+
+        // Add role-specific fields
+        switch ($role) {
+            case 'customer':
+                $stats['total_customers'] = $total;
+                $stats['active_customers'] = $active;
+                $stats['inactive_customers'] = $inactive;
+                break;
+
+            case 'vendor':
+                $stats['total_vendors'] = $total;
+                $stats['active_vendors'] = $active;
+                $stats['inactive_vendors'] = $inactive;
+                $stats['verified_vendors'] = $verified;
+                break;
+
+            case 'driver':
+                $stats['total_drivers'] = $total;
+                $stats['active_drivers'] = $active;
+                $stats['inactive_drivers'] = $inactive;
+                $stats['verified_drivers'] = $verified;
+                break;
+        }
+
+        return $stats;
     }
 
     /**

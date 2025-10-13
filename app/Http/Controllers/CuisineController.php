@@ -84,15 +84,65 @@ class CuisineController extends Controller
     public function downloadTemplate()
     {
         $filePath = storage_path('app/templates/cuisines_import_template.xlsx');
+        $templateDir = dirname($filePath);
         
+        // Create template directory if it doesn't exist
+        if (!is_dir($templateDir)) {
+            mkdir($templateDir, 0755, true);
+        }
+        
+        // Generate template if it doesn't exist
         if (!file_exists($filePath)) {
-            abort(404, 'Template file not found');
+            $this->generateTemplate($filePath);
         }
         
         return response()->download($filePath, 'cuisines_import_template.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="cuisines_import_template.xlsx"'
         ]);
+    }
+
+    /**
+     * Generate Excel template for cuisine import
+     */
+    private function generateTemplate($filePath)
+    {
+        try {
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            // Set headers
+            $headers = [
+                'A1' => 'title',
+                'B1' => 'photo'
+            ];
+            
+            foreach ($headers as $cell => $value) {
+                $sheet->setCellValue($cell, $value);
+                $sheet->getStyle($cell)->getFont()->setBold(true);
+            }
+            
+            // Add sample data
+            $sampleData = [
+                'Italian',
+                'https://example.com/images/italian.jpg'
+            ];
+            
+            $sheet->fromArray([$sampleData], null, 'A2');
+            
+            // Auto-size columns
+            foreach (range('A', 'B') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            
+            // Save the file
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save($filePath);
+            
+        } catch (\Exception $e) {
+            \Log::error('Failed to generate cuisines template: ' . $e->getMessage());
+            abort(500, 'Failed to generate template');
+        }
     }
 
     public function delete($id)

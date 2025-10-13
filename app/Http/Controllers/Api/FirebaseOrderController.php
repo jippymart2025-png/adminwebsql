@@ -25,12 +25,13 @@ class FirebaseOrderController extends Controller
         $vendorID = $request->query('vendorID');
         $limit = (int) $request->query('limit', 10);
         $page = (int) $request->query('page', 1);
-        $lastCreatedAt = $request->query('last_created_at');
-        $lastDocId = $request->query('last_doc_id');
 
-        $cacheKey = "firebase_orders_v4_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any') . "_page_{$page}_last_" . ($lastCreatedAt ?: 'start') . "_" . ($lastDocId ?: 'start') . "_limit_{$limit}";
+        // Calculate offset for page-based pagination
+        $offset = ($page - 1) * $limit;
 
-        $data = Cache::remember($cacheKey, 30, function () use ($statusFilter, $vendorID, $limit, $lastCreatedAt, $lastDocId) {
+        $cacheKey = "firebase_orders_v5_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any') . "_page_{$page}_limit_{$limit}";
+
+        $data = Cache::remember($cacheKey, 30, function () use ($statusFilter, $vendorID, $limit, $offset, $page) {
             $query = $this->firestore
                 ->collection('restaurant_orders')
                 ->orderBy('createdAt', 'DESCENDING');
@@ -44,42 +45,45 @@ class FirebaseOrderController extends Controller
                 $query = $query->where('vendorID', '==', $vendorID);
             }
 
-            // Cursor-based pagination
-            if (!empty($lastCreatedAt) && !empty($lastDocId)) {
-                $lastDoc = $this->firestore->collection('restaurant_orders')->document($lastDocId)->snapshot();
-                if ($lastDoc->exists()) {
-                    $query = $query->startAfter([$lastDoc]);
-                }
-            }
-
-            $query = $query->limit($limit + 1);
+            // For page-based pagination, fetch all documents up to current page
+            // and then slice the results (Firestore doesn't support offset directly)
+            $totalToFetch = $offset + $limit + 1; // +1 to check if there's more
+            $query = $query->limit($totalToFetch);
 
             $documents = $query->documents();
 
+            $allOrders = [];
+            $count = 0;
+
+            foreach ($documents as $document) {
+                $allOrders[] = [
+                    'data' => $document->data(),
+                    'id' => $document->id(),
+                ];
+                $count++;
+            }
+
+            // Skip to the offset position
             $orders = [];
             $hasMore = false;
             $nextCreatedAt = null;
             $nextDocId = null;
-            $count = 0;
 
-            foreach ($documents as $document) {
-                $count++;
-                
-                if ($count > $limit) {
-                    $hasMore = true;
-                    break;
-                }
-
-                $rawData = $document->data();
-                $docId = $document->id();
+            for ($i = $offset; $i < count($allOrders) && $i < $offset + $limit; $i++) {
+                $rawData = $allOrders[$i]['data'];
+                $docId = $allOrders[$i]['id'];
 
                 // Transform to include only necessary fields
                 $orderData = $this->transformOrderData($rawData, $docId);
                 $orders[] = $orderData;
 
+                // Store last document info for next page
                 $nextCreatedAt = $rawData['createdAt'] ?? null;
                 $nextDocId = $docId;
             }
+
+            // Check if there are more results beyond current page
+            $hasMore = count($allOrders) > ($offset + $limit);
 
             return [
                 'orders' => $orders,
