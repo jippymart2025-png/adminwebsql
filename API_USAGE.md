@@ -207,7 +207,7 @@ GET /api/firebase/orders
 | `page` | integer | No | 1 | Page number (1 = first page, 2 = second page, etc.) |
 | `status` | string | No | - | Filter by order status (e.g., "order placed", "order completed") |
 | `vendorID` | string | No | - | Filter by vendor ID |
-| `with_total` | string | No | - | Set to `1` to include counters (slower, cached 5 min) |
+| `with_total` | string | No | - | Set to `1` to force counters calculation on any page (slower, cached 5 min) |
 
 ### Response Structure
 
@@ -271,6 +271,22 @@ GET /api/firebase/orders
 }
 ```
 
+### Counters Field
+
+The `counters` field provides order statistics and is included in the response based on the following logic:
+
+- **Page 1**: Counters are automatically calculated and cached for 5 minutes
+- **Page 2+**: Counters are retrieved from cache (if still valid from page 1 request)
+- **Cache Expired**: If cache has expired on page 2+, counters will be `null` unless `with_total=1` is added
+- **Force Calculation**: Add `with_total=1` to any page to force counter calculation
+
+The counters include:
+- `total`: Total number of orders matching the filters
+- `active_orders`: Orders in active states
+- `completed`: Completed orders
+- `pending`: Orders pending action
+- `cancelled`: Cancelled/rejected orders
+
 ### Order Status Categories
 
 - **Active Orders**: `order placed`, `order accepted`, `order shipped`, `in transit`, `driver pending`
@@ -280,19 +296,20 @@ GET /api/firebase/orders
 
 ### Usage Examples
 
-#### First Page (all orders with counters)
+#### First Page (counters included automatically)
 ```
-GET /api/firebase/orders?limit=10&with_total=1
+GET /api/firebase/orders?limit=10
 ```
 or
 ```
-GET /api/firebase/orders?limit=10&page=1&with_total=1
+GET /api/firebase/orders?limit=10&page=1
 ```
 
-#### Second Page
+#### Second Page (uses cached counters from page 1)
 ```
 GET /api/firebase/orders?limit=10&page=2
 ```
+> **Note**: Counters will be included if still in cache (5-minute TTL)
 
 #### Third Page
 ```
@@ -341,13 +358,14 @@ GET /api/firebase/orders?status=order%20completed&vendorID=daMWPC85zS5DArdq17yX&
 
 ### Optimization Tips
 
-1. **Statistics**: Comprehensive statistics (total, active, inactive, verified) are automatically included in every response and cached for 5 minutes
-2. **Pagination**: Use the `page` parameter to navigate through pages (page=1 for first page, page=2 for second page, etc.)
-3. **Sorting**: All results are sorted by `createdAt` in **descending order** (most recent first)
-4. **Field Selection**: Only necessary fields are returned based on role/context to minimize payload size
-5. **Caching**: 
+1. **Counters (Orders API)**: Counters are automatically calculated on page 1 and cached for 5 minutes. Subsequent pages use the cached values, reducing load on Firestore.
+2. **Statistics (Users API)**: Comprehensive statistics (total, active, inactive, verified) are automatically included in every response and cached for 5 minutes
+3. **Pagination**: Use the `page` parameter to navigate through pages (page=1 for first page, page=2 for second page, etc.)
+4. **Sorting**: All results are sorted by `createdAt` in **descending order** (most recent first)
+5. **Field Selection**: Only necessary fields are returned based on role/context to minimize payload size
+6. **Caching**: 
    - Page results are cached for 30 seconds
-   - Statistics are cached for 5 minutes (longer since they change less frequently)
+   - Statistics/counters are cached for 5 minutes (longer since they change less frequently)
 
 ### Load More Pattern (Frontend)
 

@@ -95,10 +95,13 @@ class FirebaseOrderController extends Controller
 
         // Get total count and status breakdown (cached)
         $totalCount = null;
-        $counters = null;
         $countersCacheKey = "firebase_orders_counts_v4_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any');
         
-        if ($page === 1 || $request->query('with_total') === '1') {
+        // Always try to get counters from cache first
+        $counters = Cache::get($countersCacheKey);
+        
+        // If not in cache AND (page 1 OR with_total requested), calculate it
+        if ($counters === null && ($page === 1 || $request->query('with_total') === '1')) {
             $counters = Cache::remember($countersCacheKey, 300, function () use ($statusFilter, $vendorID) {
                 $base = $this->firestore->collection('restaurant_orders');
                 
@@ -141,7 +144,10 @@ class FirebaseOrderController extends Controller
                     'cancelled' => $cancelled,
                 ];
             });
-            
+        }
+        
+        // Set total count if counters are available
+        if ($counters !== null) {
             $totalCount = $counters['total'] ?? 0;
         }
 
