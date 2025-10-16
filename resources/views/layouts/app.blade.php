@@ -2028,7 +2028,16 @@
 
             // Small delay to ensure Firebase is fully initialized
             setTimeout(() => {
-                initializeOrderListener();
+                // Only initialize order listener on pages that need it (not on settings pages)
+                const currentPath = window.location.pathname;
+                const isSettingsPage = currentPath.includes('/settings/') || 
+                                     currentPath.includes('/zone/bonus-settings') ||
+                                     currentPath.includes('/test/');
+                
+                if (!isSettingsPage) {
+                    initializeOrderListener();
+                }
+                
                 initializeTooltip();
                 initializeSoundControls();
                 initializeImpersonationAutoLogin(); // Initialize impersonation auto-login

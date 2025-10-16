@@ -14,43 +14,76 @@
         </div>
     </div>
     <div class="container-fluid">
+       <div class="admin-top-section"> 
         <div class="row">
             <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="error_top" style="display:none"></div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h4>{{trans('lang.zone_bonus_configuration')}}</h4>
-                                <p class="text-muted">{{trans('lang.zone_bonus_configuration_help')}}</p>
-                            </div>
-                            <div class="col-md-6 text-right">
-                                <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addZoneBonusModal">
-                                    <i class="fa fa-plus"></i> {{trans('lang.add_zone_bonus')}}
-                                </button>
-                            </div>
+                <div class="d-flex top-title-section pb-4 justify-content-between">
+                    <div class="d-flex top-title-left align-self-center">
+                        <span class="icon mr-3"><img src="{{ asset('images/zone.png') }}"></span>
+                        <h3 class="mb-0">{{trans('lang.zone_bonus_settings')}}</h3>
+                        <span class="counter ml-3 zone_bonus_count"></span>
+                    </div>
+                    <div class="d-flex top-title-right align-self-center">
+                        <div class="select-box pl-3">
                         </div>
-                        
-                        <div class="table-responsive mt-4">
-                            <table class="table table-striped" id="zoneBonusTable">
+                    </div>
+                </div>
+            </div>
+        </div> 
+       </div>
+       @if(session('success'))
+    <div class="alert alert-success">{{ session('success') }}</div>
+@endif
+@if($errors->any())
+    <div class="alert alert-danger">
+        <ul class="mb-0">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+@endif
+
+       <div class="table-list">
+       <div class="row">
+           <div class="col-12">
+               <div class="card border">
+                 <div class="card-header d-flex justify-content-between align-items-center border-0">
+                   <div class="card-header-title">
+                    <h3 class="text-dark-2 mb-2 h4">{{trans('lang.zone_bonus_configuration')}}</h3>
+                    <p class="mb-0 text-dark-2">{{trans('lang.zone_bonus_configuration_help')}}</p>
+                   </div>
+                   <div class="card-header-right d-flex align-items-center">
+                    <div class="card-header-btn mr-3"> 
+                        <button type="button" class="btn-primary btn rounded-full" data-toggle="modal" data-target="#addZoneBonusModal">
+                            <i class="mdi mdi-plus mr-2"></i>{{trans('lang.add_zone_bonus')}}
+                        </button>
+                     </div>
+                   </div>                
+                 </div>
+                 <div class="card-body">
+                         <div class="table-responsive m-t-10">
+                            <table id="zoneBonusTable" class="display nowrap table table-hover table-striped table-bordered table table-striped" cellspacing="0" width="100%">
                                 <thead>
-                                    <tr>
-                                        <th>{{trans('lang.zone_name')}}</th>
-                                        <th>{{trans('lang.required_orders')}}</th>
-                                        <th>{{trans('lang.bonus_amount')}}</th>
-                                        <th>{{trans('lang.status')}}</th>
-                                        <th>{{trans('lang.created_at')}}</th>
-                                        <th>{{trans('lang.actions')}}</th>
-                                    </tr>
+                                <tr>
+                                    <?php if (in_array('zone-bonus-settings', json_decode(@session('user_permissions'),true))) { ?>
+                                    <th class="delete-all"><input type="checkbox" id="is_active"><label class="col-3 control-label" for="is_active">
+                                            <a id="deleteAll" class="do_not_delete" href="javascript:void(0)"><i class="mdi mdi-delete"></i> {{trans('lang.all')}}</a></label></th>
+                                    <?php } ?>
+                                    <th>{{trans('lang.zone_name')}}</th>
+                                    <th>{{trans('lang.required_orders')}}</th>
+                                    <th>{{trans('lang.bonus_amount')}}</th>
+                                    <th>{{trans('lang.status')}}</th>
+                                    <th>{{trans('lang.created_at')}}</th>
+                                    <th>{{trans('lang.actions')}}</th>
+                                </tr>
                                 </thead>
-                                <tbody id="zoneBonusTableBody">
-                                    <!-- Data will be loaded here -->
-                                </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
         </div>
     </div>
 </div>
@@ -68,18 +101,18 @@
             <div class="modal-body">
                 <form id="addZoneBonusForm">
                     <div class="form-group">
-                        <label>{{trans('lang.select_zone')}}</label>
+                        <label class="control-label">{{trans('lang.select_zone')}}</label>
                         <select class="form-control" id="zoneSelect" required>
                             <option value="">{{trans('lang.select_zone')}}</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>{{trans('lang.required_orders_for_bonus')}}</label>
+                        <label class="control-label">{{trans('lang.required_orders_for_bonus')}}</label>
                         <input type="number" class="form-control" id="requiredOrders" min="1" max="50" required>
                         <small class="form-text text-muted">{{trans('lang.required_orders_help')}}</small>
                     </div>
                     <div class="form-group">
-                        <label>{{trans('lang.bonus_amount')}}</label>
+                        <label class="control-label">{{trans('lang.bonus_amount')}}</label>
                         <input type="number" class="form-control" id="bonusAmount" min="1" step="0.01" required>
                         <small class="form-text text-muted">{{trans('lang.bonus_amount_help')}}</small>
                     </div>
@@ -113,15 +146,15 @@
                 <form id="editZoneBonusForm">
                     <input type="hidden" id="editZoneBonusId">
                     <div class="form-group">
-                        <label>{{trans('lang.zone_name')}}</label>
+                        <label class="control-label">{{trans('lang.zone_name')}}</label>
                         <input type="text" class="form-control" id="editZoneName" readonly>
                     </div>
                     <div class="form-group">
-                        <label>{{trans('lang.required_orders_for_bonus')}}</label>
+                        <label class="control-label">{{trans('lang.required_orders_for_bonus')}}</label>
                         <input type="number" class="form-control" id="editRequiredOrders" min="1" max="50" required>
                     </div>
                     <div class="form-group">
-                        <label>{{trans('lang.bonus_amount')}}</label>
+                        <label class="control-label">{{trans('lang.bonus_amount')}}</label>
                         <input type="number" class="form-control" id="editBonusAmount" min="1" step="0.01" required>
                     </div>
                     <div class="form-group">
@@ -142,13 +175,44 @@
 @endsection
 
 @section('scripts')
-<script>
+<script type="text/javascript">
 var database = firebase.firestore();
 var zones = [];
 var zoneBonusSettings = [];
+var user_permissions = '<?php echo @session("user_permissions")?>';
+user_permissions = Object.values(JSON.parse(user_permissions));
+var checkDeletePermission = false;
+if ($.inArray('zone-bonus-settings', user_permissions) >= 0) {
+    checkDeletePermission = true;
+}
 
 $(document).ready(function() {
     loadZones();
+    
+    // Initialize DataTable with empty data first
+    const table = $('#zoneBonusTable').DataTable({
+        pageLength: 10,
+        processing: false,
+        serverSide: false,
+        responsive: true,
+        autoWidth: false,
+        scrollX: true,
+        order: [[1, 'asc']],
+        columnDefs: [
+            { orderable: false, targets: [0, 6] }
+        ],
+        language: {
+            searchPlaceholder: "Search zone bonus settings...",
+            lengthMenu: "Show _MENU_ entries per page",
+            zeroRecords: "No zone bonus settings found",
+            info: "Showing _START_ to _END_ of _TOTAL_ entries",
+            infoEmpty: "No entries available",
+            infoFiltered: "(filtered from _MAX_ total entries)"
+        },
+        data: [] // Start with empty data
+    });
+    
+    // Load data after table initialization
     loadZoneBonusSettings();
     
     // Save zone bonus
@@ -159,6 +223,29 @@ $(document).ready(function() {
     // Update zone bonus
     $('#updateZoneBonus').click(function() {
         updateZoneBonus();
+    });
+    
+    // Delete all functionality
+    $('#deleteAll').click(function() {
+        if (confirm('Are you sure you want to delete all selected zone bonus settings?')) {
+            var selectedIds = [];
+            $('#zoneBonusTable tbody tr').each(function() {
+                if ($(this).find('input[type="checkbox"]').is(':checked')) {
+                    selectedIds.push($(this).data('id'));
+                }
+            });
+            
+            if (selectedIds.length > 0) {
+                deleteMultipleZoneBonuses(selectedIds);
+            } else {
+                showError('Please select zone bonus settings to delete');
+            }
+        }
+    });
+    
+    // Checkbox change handler
+    $('#is_active').change(function() {
+        $('#zoneBonusTable tbody tr input[type="checkbox"]').prop('checked', $(this).is(':checked'));
     });
 });
 
@@ -185,44 +272,49 @@ function loadZoneBonusSettings() {
     database.collection('zone_bonus_settings').orderBy('zoneName', 'asc').get()
         .then(function(snapshots) {
             zoneBonusSettings = [];
-            $('#zoneBonusTableBody').empty();
+            var tableData = [];
             
             snapshots.docs.forEach(function(doc) {
                 var data = doc.data();
                 data.id = doc.id;
                 zoneBonusSettings.push(data);
-                addZoneBonusRow(data);
+                
+                var statusBadge = data.isActive ? 
+                    '<span class="badge badge-success">Active</span>' : 
+                    '<span class="badge badge-secondary">Inactive</span>';
+                
+                var actions = '';
+                if (checkDeletePermission) {
+                    actions += '<button class="btn btn-sm btn-primary edit-zone-bonus mr-1" data-id="' + data.id + '">' +
+                        '<i class="mdi mdi-pencil"></i>' +
+                    '</button>';
+                }
+                actions += '<button class="btn btn-sm btn-danger delete-zone-bonus" data-id="' + data.id + '">' +
+                    '<i class="mdi mdi-delete"></i>' +
+                '</button>';
+                
+                tableData.push([
+                    checkDeletePermission ? '<input type="checkbox" class="row-checkbox" data-id="' + data.id + '">' : '',
+                    data.zoneName,
+                    data.requiredOrdersForBonus,
+                    '₹' + data.bonusAmount,
+                    statusBadge,
+                    formatDate(data.createdAt),
+                    actions
+                ]);
             });
+            
+            // Update DataTable with new data
+            var table = $('#zoneBonusTable').DataTable();
+            table.clear().rows.add(tableData).draw();
+            
+            // Update counter
+            $('.zone_bonus_count').text('(' + zoneBonusSettings.length + ')');
         })
         .catch(function(error) {
             console.error('Error loading zone bonus settings:', error);
             showError('Error loading zone bonus settings');
         });
-}
-
-// Add zone bonus row to table
-function addZoneBonusRow(data) {
-    var statusBadge = data.isActive ? 
-        '<span class="badge badge-success">Active</span>' : 
-        '<span class="badge badge-secondary">Inactive</span>';
-    
-    var row = '<tr data-id="' + data.id + '">' +
-        '<td>' + data.zoneName + '</td>' +
-        '<td>' + data.requiredOrdersForBonus + '</td>' +
-        '<td>₹' + data.bonusAmount + '</td>' +
-        '<td>' + statusBadge + '</td>' +
-        '<td>' + formatDate(data.createdAt) + '</td>' +
-        '<td>' +
-            '<button class="btn btn-sm btn-primary edit-zone-bonus" data-id="' + data.id + '">' +
-                '<i class="fa fa-edit"></i> Edit' +
-            '</button> ' +
-            '<button class="btn btn-sm btn-danger delete-zone-bonus" data-id="' + data.id + '">' +
-                '<i class="fa fa-trash"></i> Delete' +
-            '</button>' +
-        '</td>' +
-    '</tr>';
-    
-    $('#zoneBonusTableBody').append(row);
 }
 
 // Save zone bonus
@@ -349,6 +441,23 @@ $(document).on('click', '.delete-zone-bonus', function() {
             });
     }
 });
+
+// Delete multiple zone bonuses
+function deleteMultipleZoneBonuses(ids) {
+    var promises = ids.map(function(id) {
+        return database.collection('zone_bonus_settings').doc(id).delete();
+    });
+    
+    Promise.all(promises)
+        .then(function() {
+            loadZoneBonusSettings();
+            showSuccess('Selected zone bonus settings deleted successfully');
+        })
+        .catch(function(error) {
+            console.error('Error deleting zone bonuses:', error);
+            showError('Error deleting zone bonus settings');
+        });
+}
 
 // Utility functions
 function formatDate(timestamp) {

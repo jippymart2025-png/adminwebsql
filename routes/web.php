@@ -347,6 +347,49 @@ Route::middleware(['permission:drivers,drivers.edit'])->group(function () {
     Route::post('/drivers/clear-order-request-data/{id}', [App\Http\Controllers\DriverController::class, 'clearOrderRequestData'])->name('drivers.clearOrderRequestData');
     Route::post('/drivers/clear-all-order-request-data', [App\Http\Controllers\DriverController::class, 'clearAllOrderRequestData'])->name('drivers.clearAllOrderRequestData');
 });
+
+// Driver Wallet Management Routes
+Route::middleware(['permission:driver-wallets,driver.wallets'])->group(function () {
+    Route::get('/driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'index'])->name('driver.wallets');
+    Route::get('/api/driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'getAllDriverWallets'])->name('api.driver.wallets');
+    Route::get('/api/driver-wallets/wallet', [App\Http\Controllers\DriverWalletController::class, 'getDriverWallet'])->name('api.driver.wallet.get');
+    Route::get('/api/driver-wallets/transactions', [App\Http\Controllers\DriverWalletController::class, 'getDriverTransactions'])->name('api.driver.wallet.transactions');
+    Route::post('/api/driver-wallets/add-credit', [App\Http\Controllers\DriverWalletController::class, 'addCredit'])->name('api.driver.wallet.add.credit');
+    Route::post('/api/driver-wallets/process-order', [App\Http\Controllers\DriverWalletController::class, 'processOrderCompletion'])->name('api.driver.wallet.process.order');
+    Route::get('/api/driver-wallets/daily-orders', [App\Http\Controllers\DriverWalletController::class, 'getDailyOrderCount'])->name('api.driver.wallet.daily.orders');
+    Route::post('/api/driver-wallets/check-zone-bonus', [App\Http\Controllers\DriverWalletController::class, 'checkZoneBonus'])->name('api.driver.wallet.check.bonus');
+});
+
+// Order Completion Processing Routes
+Route::middleware(['permission:driver-wallets,driver.wallets'])->group(function () {
+    Route::post('/api/order-completion/process', [App\Http\Controllers\OrderCompletionController::class, 'processOrder'])->name('api.order.completion.process');
+    Route::post('/api/order-completion/process-multiple', [App\Http\Controllers\OrderCompletionController::class, 'processMultipleOrders'])->name('api.order.completion.process.multiple');
+    Route::post('/api/order-completion/process-unprocessed', [App\Http\Controllers\OrderCompletionController::class, 'processUnprocessedOrders'])->name('api.order.completion.process.unprocessed');
+    Route::get('/api/order-completion/stats', [App\Http\Controllers\OrderCompletionController::class, 'getStats'])->name('api.order.completion.stats');
+    Route::get('/api/order-completion/unprocessed', [App\Http\Controllers\OrderCompletionController::class, 'getUnprocessedOrders'])->name('api.order.completion.unprocessed');
+    Route::post('/api/order-completion/test', [App\Http\Controllers\OrderCompletionController::class, 'testOrderCompletion'])->name('api.order.completion.test');
+});
+
+// Migration Routes
+Route::middleware(['permission:driver-wallets,driver.wallets'])->group(function () {
+    Route::get('/migration', [App\Http\Controllers\MigrationController::class, 'index'])->name('migration.index');
+    Route::get('/api/migration/status', [App\Http\Controllers\MigrationController::class, 'getStatus'])->name('api.migration.status');
+    Route::post('/api/migration/migrate-driver-wallets', [App\Http\Controllers\MigrationController::class, 'migrateDriverWallets'])->name('api.migration.migrate');
+});
+
+// Simple Migration Routes (More Reliable) - Temporarily remove permission middleware for testing
+Route::group(function () {
+    Route::get('/simple-migration', [App\Http\Controllers\SimpleMigrationController::class, 'index'])->name('simple.migration.index');
+    Route::get('/api/simple-migration/status', [App\Http\Controllers\SimpleMigrationController::class, 'getStatus'])->name('api.simple.migration.status');
+    Route::get('/api/simple-migration/test', [App\Http\Controllers\SimpleMigrationController::class, 'testWalletSystem'])->name('api.simple.migration.test');
+    Route::post('/api/simple-migration/create-sample', [App\Http\Controllers\SimpleMigrationController::class, 'createSampleWallet'])->name('api.simple.migration.create.sample');
+    Route::post('/api/simple-migration/clear', [App\Http\Controllers\SimpleMigrationController::class, 'clearWalletData'])->name('api.simple.migration.clear');
+});
+
+// Test Routes (No Permission Required)
+Route::get('/api/test', [App\Http\Controllers\TestController::class, 'test'])->name('api.test');
+Route::get('/api/test-firebase', [App\Http\Controllers\TestController::class, 'testFirebase'])->name('api.test.firebase');
+Route::get('/test/api', function() { return view('test.api'); })->name('test.api');
 Route::get('/users/profile', [App\Http\Controllers\UserController::class, 'profile'])->name('users.profile');
 Route::post('/users/profile/update/{id}', [App\Http\Controllers\UserController::class, 'update'])->name('users.profile.update');
 
@@ -450,6 +493,18 @@ Route::prefix('settings')->group(function () {
         Route::delete('api/zone-bonus-settings/{id}', [App\Http\Controllers\ZoneBonusController::class, 'destroy'])->name('api.zone.bonus.destroy');
         Route::get('api/zone-bonus-settings/zone/{zoneId}', [App\Http\Controllers\ZoneBonusController::class, 'getZoneBonusSetting'])->name('api.zone.bonus.get');
         Route::get('api/zones', [App\Http\Controllers\ZoneBonusController::class, 'getZones'])->name('api.zones');
+    });
+
+    // Phase 1 Testing Routes (Development Only)
+    Route::middleware(['permission:zone-bonus-settings,settings.zone.bonus'])->group(function () {
+        Route::get('test/phase1', function () {
+            return view('test.phase1');
+        })->name('test.phase1.dashboard');
+        Route::get('test/phase1/zone-config', [App\Http\Controllers\Phase1TestController::class, 'testZoneBonusConfig'])->name('test.phase1.zone.config');
+        Route::get('test/phase1/driver-wallet/{driverId?}', [App\Http\Controllers\Phase1TestController::class, 'testDriverWallet'])->name('test.phase1.driver.wallet');
+        Route::get('test/phase1/order-tracking/{driverId?}', [App\Http\Controllers\Phase1TestController::class, 'testOrderTracking'])->name('test.phase1.order.tracking');
+        Route::get('test/phase1/complete/{driverId?}', [App\Http\Controllers\Phase1TestController::class, 'testCompleteIntegration'])->name('test.phase1.complete');
+        Route::delete('test/phase1/cleanup/{driverId?}', [App\Http\Controllers\Phase1TestController::class, 'cleanupTestData'])->name('test.phase1.cleanup');
     });
 
     Route::middleware(['permission:payment-method,payment-method'])->group(function () {

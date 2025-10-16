@@ -63,6 +63,12 @@ class DatabaseSeeder extends Seeder
         $this->call([
             SurgeRulesSeeder::class,
         ]);
+
+        // Add zone bonus settings permissions to super admin
+        $this->call([
+            ZoneBonusSettingsPermissionsSeeder::class,
+            DriverWalletPermissionsSeeder::class,
+        ]);
     }
 }
 
@@ -78,3 +84,4 @@ class DatabaseSeeder extends Seeder
 //php artisan db:seed --class=MartSettingsPermissionsSeeder
 //php artisan db:seed --class=AppSettingsPermissionsSeeder
 //php artisan db:seed --class=SurgeRulesSeeder
+//php artisan db:seed --class=ZoneBonusSettingsPermissionsSeeder

@@ -26,12 +26,23 @@
                 </a>
             </li>
         @endif
-        @if(in_array('zone', $role_has_permission))
+        @if(in_array('zone', $role_has_permission) || in_array('zone-bonus-settings', $role_has_permission))
+            <li class="nav-subtitle"><span class="nav-subtitle-span">{{trans('lang.zone_management')}}</span></li>
+        @endif
+        @if(in_array('zone', $role_has_permission) || in_array('zone-bonus-settings', $role_has_permission))
             <li>
-                <a class="waves-effect waves-dark" href="{!! url('zone') !!}" aria-expanded="false">
+                <a class="has-arrow waves-effect waves-dark" href="#" aria-expanded="false">
                     <i class="mdi mdi-map-marker-circle"></i>
-                    <span class="hide-menu">{{trans('lang.zone')}}</span>
+                    <span class="hide-menu">{{trans('lang.zone_management')}}</span>
                 </a>
+                <ul aria-expanded="false" class="collapse">
+                    @if(in_array('zone', $role_has_permission))
+                        <li><a href="{!! url('zone') !!}">{{trans('lang.zone')}}</a></li>
+                    @endif
+                    @if(in_array('zone-bonus-settings', $role_has_permission))
+                        <li><a href="{!! url('settings/zone/bonus-settings') !!}">{{trans('lang.zone_bonus_settings')}}</a></li>
+                    @endif
+                </ul>
             </li>
         @endif
         @if(in_array('admins', $role_has_permission) || in_array('roles', $role_has_permission))
@@ -107,7 +118,7 @@
             </li>
         @endif
         @if(in_array('drivers',$role_has_permission) || in_array('approve_drivers',$role_has_permission) ||
-        in_array('pending_drivers',$role_has_permission))
+        in_array('pending_drivers',$role_has_permission) || in_array('driver-wallets',$role_has_permission))
             <li>
                 <a class="has-arrow waves-effect waves-dark driver_menu" href="#" aria-expanded="false">
                     <i class="mdi mdi-account-card-details"></i>
@@ -125,6 +136,21 @@
                     @if(in_array('pending_drivers',$role_has_permission))
                         <li class="pending_driver_menu"><a
                                 href="{!! url('drivers/pending') !!}">{{trans('lang.approval_pending_drivers')}}</a>
+                        </li>
+                    @endif
+                    @if(in_array('driver-wallets',$role_has_permission))
+                        <li class="driver_wallet_menu"><a
+                                href="{!! url('driver-wallets') !!}">{{trans('lang.driver_wallet_management')}}</a>
+                        </li>
+                    @endif
+                    @if(in_array('driver-wallets',$role_has_permission))
+                        <li class="driver_migration_menu"><a
+                                href="{!! url('migration') !!}">Driver Wallet Migration</a>
+                        </li>
+                    @endif
+                    @if(in_array('driver-wallets',$role_has_permission))
+                        <li class="driver_simple_migration_menu"><a
+                                href="{!! url('simple-migration') !!}">Simple Migration</a>
                         </li>
                     @endif
                 </ul>
