@@ -75,16 +75,26 @@ async function remainingPrice(driverID){
         await database.collection('restaurant_orders').where('driverID','==',driverID).where("status","in",["Order Completed"]).get().then( async function(orderSnapshots){
             orderSnapshots.docs.forEach((order)=>{
               var orderData = order.data();
-                if(orderData.deliveryCharge!=undefined && orderData.tip_amount!=undefined){
-                    var orderDataTotal = parseInt(orderData.deliveryCharge)+parseInt(orderData.tip_amount);
-                    total_price = total_price + orderDataTotal;      
-                  }else if(orderData.deliveryCharge!=undefined){
-                    var orderDataTotal = parseInt(orderData.deliveryCharge);
-                    total_price = total_price + orderDataTotal;      
-                  }else if(orderData.tip_amount!=undefined){
-                    var orderDataTotal = parseInt(orderData.tip_amount);
-                    total_price = total_price + orderDataTotal;      
-                  }
+              
+              // Use new calculatedCharges structure instead of deliveryCharge
+              var orderEarnings = 0;
+              
+              // Add totalCalculatedCharge from calculatedCharges
+              if (orderData.calculatedCharges && orderData.calculatedCharges.totalCalculatedCharge != undefined) {
+                  orderEarnings += parseFloat(orderData.calculatedCharges.totalCalculatedCharge);
+              }
+              
+              // Add tip_amount
+              if (orderData.tip_amount != undefined) {
+                  orderEarnings += parseFloat(orderData.tip_amount);
+              }
+              
+              // Add surge_fee if it exists
+              if (orderData.surge_fee != undefined) {
+                  orderEarnings += parseFloat(orderData.surge_fee);
+              }
+              
+              total_price = total_price + orderEarnings;
             })
              remaining = total_price - paid_price;
         });   

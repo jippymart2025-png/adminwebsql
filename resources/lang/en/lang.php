@@ -2208,6 +2208,21 @@ return [
 
     'zone_edit'=>'Zone Edit',
 
+    // Zone Bonus Settings
+    'zone_bonus_settings' => 'Zone Bonus Settings',
+    'zone_bonus_configuration' => 'Zone Bonus Configuration',
+    'zone_bonus_configuration_help' => 'Configure bonus requirements for each zone',
+    'add_zone_bonus' => 'Add Zone Bonus',
+    'edit_zone_bonus' => 'Edit Zone Bonus',
+    'required_orders' => 'Required Orders',
+    'bonus_amount' => 'Bonus Amount',
+    'required_orders_for_bonus' => 'Required Orders for Bonus',
+    'required_orders_help' => 'Number of orders driver must complete to earn bonus',
+    'bonus_amount_help' => 'Bonus amount in rupees',
+    'zone_bonus_created' => 'Zone bonus setting created successfully',
+    'zone_bonus_updated' => 'Zone bonus setting updated successfully',
+    'zone_bonus_deleted' => 'Zone bonus setting deleted successfully',
+
     'zone_name'=>'Zone Name',
 
     'zone_name_help'=>'Add your zone name',

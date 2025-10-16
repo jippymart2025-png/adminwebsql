@@ -435,7 +435,22 @@
                     var driverDocId = await docrefSnapshot.data().documents.filter((doc) => doc.status == 'approved').map((docData) => docData.documentId);
                     if (driverDocId.length >= enableDocIds.length) {
                         if (documentFor == 'driver') {
-                            await database.collection('users').doc(driver.id).update({ 'isDocumentVerify': true, isActive: true });
+                            // Check if this is a new driver verification (first time getting verified)
+                            await database.collection('users').doc(driver.id).get().then(async function(userSnapshot) {
+                                var userData = userSnapshot.data();
+                                var isNewDriverVerification = !userData.hasOwnProperty('hasReceivedInitialCredit') || userData.hasReceivedInitialCredit !== true;
+                                
+                                // Update driver verification status
+                                await database.collection('users').doc(driver.id).update({ 
+                                    'isDocumentVerify': true, 
+                                    'isActive': true 
+                                });
+                                
+                                // Add 1000 wallet credit for new drivers
+                                if (isNewDriverVerification) {
+                                    await addInitialWalletCredit(driver.id, userData);
+                                }
+                            });
                         } else {
                             await database.collection('users').doc(driver.id).update({ 'isDocumentVerify': true });
                         }
@@ -461,6 +476,56 @@
             isCompleted = true;
         }));
         return isCompleted;
+    }
+
+    // Function to add initial wallet credit for new drivers
+    async function addInitialWalletCredit(driverId, userData) {
+        try {
+            var date = firebase.firestore.FieldValue.serverTimestamp();
+            var initialCreditAmount = 1000;
+            
+            // Get current wallet amount
+            var currentWalletAmount = 0;
+            if (userData.hasOwnProperty('wallet_amount') && !isNaN(userData.wallet_amount) && userData.wallet_amount != null) {
+                currentWalletAmount = userData.wallet_amount;
+            }
+            
+            var newWalletAmount = parseFloat(currentWalletAmount) + parseFloat(initialCreditAmount);
+            
+            // Update user wallet amount and mark as having received initial credit
+            await database.collection('users').doc(driverId).update({
+                'wallet_amount': newWalletAmount,
+                'hasReceivedInitialCredit': true,
+                'initialCreditDate': date
+            });
+            
+            // Create wallet transaction record
+            var walletTransactionId = database.collection('temp').doc().id;
+            await database.collection('wallet').doc(walletTransactionId).set({
+                'amount': parseFloat(initialCreditAmount),
+                'date': date,
+                'id': walletTransactionId,
+                'isTopUp': true,
+                'order_id': null,
+                'payment_method': 'Admin Credit',
+                'payment_status': 'success',
+                'transactionUser': 'driver',
+                'note': 'Initial driver registration bonus - Document verification completed',
+                'user_id': driverId,
+                'admin_credit_type': 'initial_driver_bonus'
+            });
+            
+            console.log('✅ Initial wallet credit of 1000 added for new driver:', driverId);
+            
+            // Log activity if function exists
+            if (typeof logActivity === 'function') {
+                var driverName = (userData.firstName || '') + ' ' + (userData.lastName || 'Unknown');
+                await logActivity('drivers', 'initial_wallet_credit', 'Added initial 1000 wallet credit for new driver: ' + driverName);
+            }
+            
+        } catch (error) {
+            console.error('❌ Error adding initial wallet credit for driver:', driverId, error);
+        }
     }
 </script>
 @endsection

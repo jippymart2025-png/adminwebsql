@@ -440,6 +440,17 @@ Route::prefix('settings')->group(function () {
     Route::middleware(['permission:document-verification,settings.app.documentVerification'])->group(function () {
         Route::get('app/documentVerification', [App\Http\Controllers\SettingsController::class, 'documentVerification'])->name('settings.app.documentVerification');
     });
+    
+    // Zone Bonus Settings Routes
+    Route::middleware(['permission:zone-bonus-settings,settings.zone.bonus'])->group(function () {
+        Route::get('zone/bonus-settings', [App\Http\Controllers\ZoneBonusController::class, 'index'])->name('settings.zone.bonus');
+        Route::get('api/zone-bonus-settings', [App\Http\Controllers\ZoneBonusController::class, 'getZoneBonusSettings'])->name('api.zone.bonus.settings');
+        Route::post('api/zone-bonus-settings', [App\Http\Controllers\ZoneBonusController::class, 'store'])->name('api.zone.bonus.store');
+        Route::put('api/zone-bonus-settings/{id}', [App\Http\Controllers\ZoneBonusController::class, 'update'])->name('api.zone.bonus.update');
+        Route::delete('api/zone-bonus-settings/{id}', [App\Http\Controllers\ZoneBonusController::class, 'destroy'])->name('api.zone.bonus.destroy');
+        Route::get('api/zone-bonus-settings/zone/{zoneId}', [App\Http\Controllers\ZoneBonusController::class, 'getZoneBonusSetting'])->name('api.zone.bonus.get');
+        Route::get('api/zones', [App\Http\Controllers\ZoneBonusController::class, 'getZones'])->name('api.zones');
+    });
 
     Route::middleware(['permission:payment-method,payment-method'])->group(function () {
         Route::get('payment/stripe', [App\Http\Controllers\SettingsController::class, 'stripe'])->name('payment.stripe');
