@@ -366,31 +366,24 @@ GET /api/firebase/orders?status=order%20completed&vendorID=daMWPC85zS5DArdq17yX&
 6. **Caching**: 
    - Page results are cached for 30 seconds
    - Statistics/counters are cached for 5 minutes (longer since they change less frequently)
-
 ### Load More Pattern (Frontend)
-
 ```javascript
 let currentPage = 1;
-
 // First page
 async function loadFirstPage() {
   currentPage = 1;
   const response = await fetch('/api/firebase/users?role=vendor&limit=10&page=1');
   const data = await response.json();
-  
   // Access statistics (always available)
   console.log('Total Vendors:', data.statistics.total_vendors);
   console.log('Active Vendors:', data.statistics.active_vendors);
   console.log('Inactive Vendors:', data.statistics.inactive_vendors);
   console.log('Verified Vendors:', data.statistics.verified_vendors);
-  
   // Calculate total pages
   const totalPages = Math.ceil(data.statistics.total / data.meta.limit);
   console.log('Total Pages:', totalPages);
-  
   return data;
 }
-
 // Load next page
 async function loadNextPage() {
   currentPage++;
@@ -398,15 +391,12 @@ async function loadNextPage() {
     `/api/firebase/users?role=vendor&limit=10&page=${currentPage}`
   );
   const data = await response.json();
-  
   // Statistics are still available on every page!
   console.log('Statistics:', data.statistics);
-  
   // Check if there are more pages
   if (!data.meta.has_more) {
     console.log('No more data available');
   }
-  
   return data;
 }
 
@@ -436,13 +426,11 @@ function displayStatistics(stats) {
   `;
   document.getElementById('stats-container').innerHTML = html;
 }
-
 // Check if more pages exist
 function hasMore(response) {
   return response.meta.has_more === true;
 }
 ```
-
 ---
 
 ## 3. Live Tracking Endpoint
