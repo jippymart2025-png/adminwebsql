@@ -113,6 +113,18 @@
                                         <i class="mdi mdi-plus mr-2"></i>Add Promotion
                                     </a>
                                 </div>
+                                <div class="card-header-btn mr-3">
+                                    <select id="promotion_vtype_filter" class="form-control">
+                                        <option value="">All Types</option>
+                                        <option value="restaurant">Restaurant</option>
+                                        <option value="mart">Mart</option>
+                                    </select>
+                                </div>
+                                <div class="card-header-btn">
+                                    <select id="promotion_zone_filter" class="form-control">
+                                        <option value="">All Zones</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div class="card-body">
@@ -121,7 +133,9 @@
                                     <thead>
                                         <tr>
                                             <th class="delete-all"><input type="checkbox" id="is_active"><label class="col-3 control-label" for="is_active"><a id="deleteAll" class="do_not_delete" href="javascript:void(0)"><i class="mdi mdi-delete"></i> All</a></label></th>
-                                            <th>Restaurant</th>
+                                            <th>Type</th>
+                                            <th>Zone</th>
+                                            <th>Restaurant/Mart</th>
                                             <th>Product</th>
                                             <th>Special Price</th>
                                             <th>Item Limit</th>
@@ -154,6 +168,9 @@ var database = firebase.firestore();
 var promotionsRef = database.collection('promotions');
 var vendorsMap = {};
 var productsMap = {};
+var zonesMap = {};
+var selectedVTypeFilter = '';
+var selectedZoneFilter = '';
 
 function fetchVendorsAndProducts() {
     return database.collection('vendors').get().then(function(vendorSnap) {
@@ -166,6 +183,12 @@ function fetchVendorsAndProducts() {
         productSnap.forEach(function(doc) {
             var data = doc.data();
             productsMap[data.id] = data.name;
+        });
+        return database.collection('zone').get();
+    }).then(function(zoneSnap) {
+        zoneSnap.forEach(function(doc) {
+            var data = doc.data();
+            zonesMap[doc.id] = data.name || doc.id;
         });
     });
 }
@@ -185,7 +208,13 @@ function isExpired(endTime) {
 
 function renderTable(promotions) {
     var tbody = '';
+    var visibleCount = 0;
     promotions.forEach(function(promo) {
+        var pType = (promo.vType || '').toString().toLowerCase();
+        var pZone = promo.zoneId || '';
+        if (selectedVTypeFilter && pType !== selectedVTypeFilter) return;
+        if (selectedZoneFilter && pZone !== selectedZoneFilter) return;
+
         var isExpiredPromo = isExpired(promo.end_time);
         var expiredText = isExpiredPromo ? '<br><span class="badge badge-danger">EXPIRED</span>' : '';
 
@@ -194,9 +223,13 @@ function renderTable(promotions) {
         // Use stored titles if available, otherwise fall back to mapping
         var restaurantName = promo.restaurant_title || vendorsMap[promo.restaurant_id] || promo.restaurant_id || '-';
         var productName = promo.product_title || productsMap[promo.product_id] || promo.product_id || '-';
+        var typeText = pType ? (pType.charAt(0).toUpperCase() + pType.slice(1)) : '-';
+        var zoneText = zonesMap[pZone] || pZone || '-';
         
         tbody += '<tr class="' + rowClass + '">' +
-            '<td class="delete-all"><input type="checkbox" id="is_open_' + promo.id + '" class="is_open" dataId="' + promo.id + '"><label class="col-3 control-label" for="is_open_' + promo.id + '" ></label></td>' +
+            '<td class="delete-all"><input type="checkbox" id="is_open_' + promo.id + '" class="is_open" dataId="' + promo.id + '"><label class="col-3 control-label" for="is_open_' + promo.id + '"></label></td>' +
+            '<td>' + typeText + '</td>' +
+            '<td>' + zoneText + '</td>' +
             '<td>' + restaurantName + '</td>' +
             '<td>' + productName + '</td>' +
             '<td>' + (promo.special_price !== undefined ? '₹' + promo.special_price : '-') + '</td>' +
@@ -214,9 +247,10 @@ function renderTable(promotions) {
                 '</span>' +
             '</td>' +
             '</tr>';
+        visibleCount++;
     });
     $('#promotion-table-body').html(tbody);
-    $('.promotion_count').text(promotions.length);
+    $('.promotion_count').text(visibleCount);
 }
 
 function editUrl(id) {
@@ -242,11 +276,8 @@ function loadPromotions() {
                 promotions.push(data);
             });
 
-            // Update expired promotions in database
             if (updatePromises.length > 0) {
-                Promise.all(updatePromises).then(function() {
-                    console.log('Updated ' + updatePromises.length + ' expired promotions');
-                }).catch(function(error) {
+                Promise.all(updatePromises).catch(function(error) {
                     console.error('Error updating expired promotions:', error);
                 });
             }
@@ -259,9 +290,9 @@ function loadPromotions() {
                 responsive: true,
                 searching: true,
                 ordering: true,
-                order: [[1, 'asc']],
+                order: [[3, 'asc']],
                 columnDefs: [
-                    { orderable: false, targets: [0, 10, 11] }
+                    { orderable: false, targets: [0, 12, 13] }
                 ],
                 "language": {
                     "zeroRecords": "No records found",
@@ -275,6 +306,22 @@ function loadPromotions() {
 
 $(document).ready(function() {
     loadPromotions();
+
+    database.collection('zone').get().then(function(snap) {
+        snap.forEach(function(doc) {
+            var data = doc.data();
+            $('#promotion_zone_filter').append('<option value="'+doc.id+'">'+(data.name || doc.id)+'</option>');
+        });
+    });
+
+    $(document).on('change', '#promotion_vtype_filter', function() {
+        selectedVTypeFilter = ($(this).val() || '').toString().toLowerCase();
+        loadPromotions();
+    });
+    $(document).on('change', '#promotion_zone_filter', function() {
+        selectedZoneFilter = ($(this).val() || '').toString();
+        loadPromotions();
+    });
 
     // Select all checkboxes
     $("#is_active").click(function () {

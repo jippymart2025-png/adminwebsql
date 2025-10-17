@@ -32,10 +32,28 @@
                                     <fieldset>
                                         <legend>Create Promotion</legend>
                                         <div class="form-group row width-50">
-                                            <label class="col-3 control-label">Restaurant</label>
+                                            <label class="col-3 control-label">Type</label>
+                                            <div class="col-7">
+                                                <select id="promotion_vtype" class="form-control">
+                                                    <option value="">Select Type</option>
+                                                    <option value="restaurant">Restaurant</option>
+                                                    <option value="mart">Mart</option>
+                                                </select>
+                                                <div class="form-text text-muted">Choose whether this promotion is for a Restaurant or Mart.</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group row width-50">
+                                            <label class="col-3 control-label">Zone</label>
+                                            <div class="col-7">
+                                                <select id="promotion_zone" class="form-control"></select>
+                                                <div class="form-text text-muted">Filter vendors by zone.</div>
+                                            </div>
+                                        </div>
+                                        <div class="form-group row width-50">
+                                            <label class="col-3 control-label">Restaurant / Mart</label>
                                             <div class="col-7">
                                                 <select id="promotion_restaurant" class="form-control"></select>
-                                                <div class="form-text text-muted">Select the restaurant for this promotion.</div>
+                                                <div class="form-text text-muted">Select the restaurant/mart for this promotion.</div>
                                             </div>
                                         </div>
                                         <div class="form-group row width-50">
@@ -124,17 +142,42 @@
 var database = firebase.firestore();
 var restaurantSelect = $('#promotion_restaurant');
 var productSelect = $('#promotion_product');
+var vtypeSelect = $('#promotion_vtype');
+var zoneSelect = $('#promotion_zone');
 var restaurantList = [];
 var productList = [];
 
-function populateRestaurants() {
+function populateZones(selectedId) {
+    zoneSelect.empty();
+    zoneSelect.append('<option value="">All Zones</option>');
+    database.collection('zone').where('publish','==',true).orderBy('name','asc').get().then(function(snapshots) {
+        snapshots.forEach(function(doc) {
+            var data = doc.data();
+            var selected = (selectedId && doc.id === selectedId) ? 'selected' : '';
+            zoneSelect.append('<option value="' + doc.id + '" ' + selected + '>' + (data.name || doc.id) + '</option>');
+        });
+    });
+}
+
+function populateRestaurants(selectedVType, selectedZoneId) {
     restaurantSelect.empty();
-    restaurantSelect.append('<option value="">Select Restaurant</option>');
-    database.collection('vendors').orderBy('title').get().then(function(snapshot) {
+    restaurantSelect.append('<option value="">Select Restaurant / Mart</option>');
+    // Fetch all vendors and filter client-side to avoid composite index issues
+    database.collection('vendors').get().then(function(snapshot) {
+        restaurantList = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
             restaurantList.push(data);
-            restaurantSelect.append('<option value="' + data.id + '">' + data.title + '</option>');
+            var vendorType = (data.vType || '').toString().toLowerCase();
+            var zoneId = data.zoneId || '';
+            if ((!
+                selectedVType || vendorType === selectedVType
+            ) && (
+                !selectedZoneId || zoneId === selectedZoneId
+            )) {
+                // Use Firestore doc id as value; include legacy id if present
+                restaurantSelect.append('<option value="' + doc.id + '" data-vtype="' + vendorType + '" data-zoneid="' + zoneId + '" data-legacy-id="' + (data.id || '') + '">' + (data.title || doc.id) + '</option>');
+            }
         });
     });
 }
@@ -144,17 +187,46 @@ function populateProducts(restaurantId) {
     productSelect.append('<option value="">Select Product</option>');
     $('#actual_price_display').hide();
     if (!restaurantId) return;
-    database.collection('vendor_products').where('vendorID', '==', restaurantId).get().then(function(snapshot) {
-        snapshot.forEach(function(doc) {
-            var data = doc.data();
-            var displayPrice = data.disPrice && data.disPrice > 0 ? data.disPrice : (data.price || 0);
-            productSelect.append('<option value="' + data.id + '" data-price="' + displayPrice + '">' + data.name + '</option>');
+    var selectedOption = restaurantSelect.find('option:selected');
+    var legacyId = (selectedOption.data('legacy-id') || '').toString();
+    var vendorType = (selectedOption.data('vtype') || vtypeSelect.val() || '').toString().toLowerCase();
+
+    var queries = [];
+    if (vendorType === 'mart') {
+        queries.push(database.collection('mart_items').where('vendorID', '==', restaurantId).get());
+        if (legacyId && legacyId !== restaurantId) {
+            queries.push(database.collection('mart_items').where('vendorID', '==', legacyId).get());
+        }
+    } else {
+        queries.push(database.collection('vendor_products').where('vendorID', '==', restaurantId).get());
+        if (legacyId && legacyId !== restaurantId) {
+            queries.push(database.collection('vendor_products').where('vendorID', '==', legacyId).get());
+        }
+    }
+
+    Promise.all(queries).then(function(results) {
+        var seen = {};
+        var total = 0;
+        results.forEach(function(snapshot) {
+            snapshot.forEach(function(doc) {
+                if (seen[doc.id]) return;
+                seen[doc.id] = true;
+                var data = doc.data();
+                var title = data.name || data.item_name || data.title || 'Item';
+                var displayPrice = data.disPrice && data.disPrice > 0 ? data.disPrice : (data.price || data.item_price || 0);
+                productSelect.append('<option value="' + (data.id || doc.id) + '" data-price="' + displayPrice + '">' + title + '</option>');
+                total++;
+            });
         });
+        if (total === 0) {
+            productSelect.append('<option value="">No products found</option>');
+        }
     });
 }
 
 $(document).ready(function () {
-    populateRestaurants();
+    populateZones('');
+    populateRestaurants('', '');
 
     // Input validation for numeric fields
     $('#promotion_special_price, #promotion_item_limit, #promotion_extra_km_charge, #promotion_free_delivery_km').on('input', function() {
@@ -167,6 +239,24 @@ $(document).ready(function () {
             value = parts[0] + '.' + parts.slice(1).join('');
         }
         $(this).val(value);
+    });
+
+    // Type and Zone filters
+    vtypeSelect.on('change', function() {
+        var vtype = ($(this).val() || '').toString().toLowerCase();
+        var zoneId = zoneSelect.val() || '';
+        populateRestaurants(vtype, zoneId);
+        productSelect.empty();
+        productSelect.append('<option value=\"\">Select Product</option>');
+        $('#actual_price_display').hide();
+    });
+    zoneSelect.on('change', function() {
+        var vtype = (vtypeSelect.val() || '').toString().toLowerCase();
+        var zoneId = ($(this).val() || '').toString();
+        populateRestaurants(vtype, zoneId);
+        productSelect.empty();
+        productSelect.append('<option value=\"\">Select Product</option>');
+        $('#actual_price_display').hide();
     });
 
     restaurantSelect.on('change', function() {
@@ -193,6 +283,8 @@ $(document).ready(function () {
         var start_time = $('#promotion_start_time').val();
         var end_time = $('#promotion_end_time').val();
         var payment_mode = 'prepaid';
+        var vType = (vtypeSelect.val() || '').toString().toLowerCase();
+        var zoneId = zoneSelect.val() || '';
         var isAvailable = $('#promotion_is_available').is(':checked');
 
         if (!restaurant_id || !product_id || !start_time || !end_time) {
@@ -236,6 +328,8 @@ $(document).ready(function () {
             restaurant_title,
             product_id,
             product_title,
+            vType,
+            zoneId,
             special_price,
             item_limit,
             extra_km_charge,
