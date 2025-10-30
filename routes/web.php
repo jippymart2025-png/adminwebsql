@@ -19,7 +19,7 @@ use App\Http\Controllers\CuisineController;
 
 Auth::routes();
 Route::get('/', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
-Route::get('/dashboard', [App\Http\Controllers\HomeController::class, 'index'])->name('dashboard');
+//Route::get('/dashboard', [App\Http\Controllers\HomeController::class, 'index'])->name('dashboard');
 
 Route::get('lang/change', [App\Http\Controllers\LangController::class, 'change'])->name('changeLang');
 
@@ -381,15 +381,15 @@ Route::middleware(['permission:driver-payouts,driversPayouts.create'])->group(fu
 });
 
 // Driver Wallet Management Routes
-Route::middleware(['permission:driver-wallets,driverWallets'])->group(function () {
-    Route::get('driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'index'])->name('driver.wallets');
-    Route::get('api/driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'getDriverWallets'])->name('api.driver.wallets');
-    Route::get('api/driver-wallets/{driverId}', [App\Http\Controllers\DriverWalletController::class, 'getDriverWallet'])->name('api.driver.wallet');
-    Route::post('api/driver-wallets/sync-all', [App\Http\Controllers\DriverWalletController::class, 'syncAllWallets'])->name('api.driver.wallets.sync');
-    Route::post('api/driver-wallets/add-credit', [App\Http\Controllers\DriverWalletController::class, 'addCredit'])->name('api.driver.wallets.add.credit');
-    Route::post('api/driver-wallets/{driverId}/refresh', [App\Http\Controllers\DriverWalletController::class, 'refreshDriverWallet'])->name('api.driver.wallet.refresh');
-    Route::put('api/driver-wallets/{driverId}', [App\Http\Controllers\DriverWalletController::class, 'updateDriverWallet'])->name('api.driver.wallet.update');
-});
+//Route::middleware(['permission:driver-wallets,driverWallets'])->group(function () {
+//    Route::get('driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'index'])->name('driver.wallets');
+//    Route::get('api/driver-wallets', [App\Http\Controllers\DriverWalletController::class, 'getDriverWallets'])->name('api.driver.wallets');
+//    Route::get('api/driver-wallets/{driverId}', [App\Http\Controllers\DriverWalletController::class, 'getDriverWallet'])->name('api.driver.wallet');
+//    Route::post('api/driver-wallets/sync-all', [App\Http\Controllers\DriverWalletController::class, 'syncAllWallets'])->name('api.driver.wallets.sync');
+//    Route::post('api/driver-wallets/add-credit', [App\Http\Controllers\DriverWalletController::class, 'addCredit'])->name('api.driver.wallets.add.credit');
+//    Route::post('api/driver-wallets/{driverId}/refresh', [App\Http\Controllers\DriverWalletController::class, 'refreshDriverWallet'])->name('api.driver.wallet.refresh');
+//    Route::put('api/driver-wallets/{driverId}', [App\Http\Controllers\DriverWalletController::class, 'updateDriverWallet'])->name('api.driver.wallet.update');
+//});
 
 Route::middleware(['permission:wallet-transaction,walletstransaction'])->group(function () {
     Route::get('walletstransaction', [App\Http\Controllers\TransactionController::class, 'index'])->name('walletstransaction');
@@ -947,7 +947,6 @@ Route::middleware(['permission:general-notifications,notification.send'])->group
 
     Route::get('/notification/send', [App\Http\Controllers\NotificationController::class, 'send'])->name('notification.send');
 
-
 });
 
 Route::post('broadcastnotification', [App\Http\Controllers\NotificationController::class, 'broadcastnotification'])->name('broadcastnotification');
@@ -1336,3 +1335,10 @@ Route::prefix('cache-test')->group(function () {
     Route::get('/config', [App\Http\Controllers\CacheTestController::class, 'getCacheConfig'])->name('cache-test.config');
 
 });
+
+use App\Http\Controllers\DashboardController;
+
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+Route::post('/dashboard/clear-cache', [DashboardController::class, 'clearCache']);
+Route::get('/dashboard/cache-stats', [DashboardController::class, 'getCacheStats']);
