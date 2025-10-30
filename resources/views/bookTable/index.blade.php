@@ -3,7 +3,7 @@
 <div class="page-wrapper">
     <div class="row page-titles">
         <div class="col-md-5 align-self-center">
-            <h3 class="text-themecolor restaurantTitle">{{trans('lang.book_table')}}</h3> 
+            <h3 class="text-themecolor restaurantTitle">{{trans('lang.book_table')}}</h3>
         </div>
         <div class="col-md-7 align-self-center">
             <ol class="breadcrumb">
@@ -156,13 +156,13 @@
                         return;
                     }
                     let records = [];
-                    let filteredRecords = [];                  
+                    let filteredRecords = [];
                     await Promise.all(querySnapshot.docs.map(async (doc) => {
                         let childData = doc.data();
                         childData.id = doc.id; // Ensure the document ID is included in the data
                         childData.guestName = childData.guestFirstName + " " + childData.guestLastName || " "
                         if (searchValue) {
-                            var date = ''; 
+                            var date = '';
                             var time = '';
                             if (childData.hasOwnProperty("createdAt")) {
                                 try {
@@ -173,18 +173,18 @@
                             }
                             var createdAt = date + ' ' + time;
                             var statustext = "";
-                            if (childData.status == "Order Rejected") {
+                            if (childData.status == "restaurantorders Rejected") {
                                 statustext = '<span class="badge badge-danger py-2 px-3">Request Rejected</span>';
-                            } else if (childData.status == "Order Placed") {
+                            } else if (childData.status == "restaurantorders Placed") {
                                 statustext = '<span class="badge badge-warning py-2 px-3">Requested</span>';
-                            } else if (childData.status == "Order Accepted") {
+                            } else if (childData.status == "restaurantorders Accepted") {
                                 statustext = '<span class="badge badge-success py-2 px-3">Request Accepted</span>';
                             }
                             if (
-                                (createdAt && createdAt.toString().toLowerCase().indexOf(searchValue) > -1) || 
+                                (createdAt && createdAt.toString().toLowerCase().indexOf(searchValue) > -1) ||
                                 (childData.totalGuest && childData.totalGuest.toString().toLowerCase().includes(searchValue)) ||
                                 (childData.guestName && childData.guestName.toString().toLowerCase().includes(searchValue)) ||
-                                (childData.guestPhone && childData.guestPhone.toString().toLowerCase().includes(searchValue)) || 
+                                (childData.guestPhone && childData.guestPhone.toString().toLowerCase().includes(searchValue)) ||
                                 (statustext && statustext.toString().toLowerCase().includes(searchValue))
                             ) {
                                 filteredRecords.push(childData);
@@ -199,11 +199,11 @@
                         if (orderByField === 'createdAt') {
                             aValue = a[orderByField] ? new Date(a[orderByField].toDate()).getTime() : 0;
                             bValue = b[orderByField] ? new Date(b[orderByField].toDate()).getTime() : 0;
-                        }   
+                        }
                         if (orderByField === 'totalGuest') {
                             aValue = a[orderByField] ? parseInt(a[orderByField]) : 0;
                             bValue = b[orderByField] ? parseInt(b[orderByField]) : 0;
-                        }                        
+                        }
                         if (orderDirection === 'asc') {
                             return (aValue > bValue) ? 1 : -1;
                         } else {
@@ -233,7 +233,7 @@
                         data: [] // No data due to error
                     });
                 });
-            },           
+            },
             columnDefs: [
             {
                 targets: 0,
@@ -281,18 +281,18 @@
         html.push('<td>' + val.totalGuest + '</td>');
         html.push('<td>' + val.guestName  + '</td>');
         if(val.guestPhone != "" && val.guestPhone != null){
-            html.push('<td>' + shortEditNumber(val.guestPhone) + '</td>');    
+            html.push('<td>' + shortEditNumber(val.guestPhone) + '</td>');
         }
         else
         {
             html.push('<td></td>');
         }
         var statustext = "";
-        if (val.status == "Order Rejected") {
+        if (val.status == "restaurantorders Rejected") {
             statustext = '<span class="badge badge-danger py-2 px-3">Request Rejected</span>';
-        } else if (val.status == "Order Placed") {
+        } else if (val.status == "restaurantorders Placed") {
             statustext = '<span class="badge badge-warning py-2 px-3">Requested</span>';
-        } else if (val.status == "Order Accepted") {
+        } else if (val.status == "restaurantorders Accepted") {
             statustext = '<span class="badge badge-success py-2 px-3">Request Accepted</span>';
         }
         html.push('<td>' + statustext + '</td>');
@@ -323,7 +323,7 @@
         var id = this.id;
         var fullname = $(this).attr('data-name');
         var auth = $(this).attr('data-auth');
-        database.collection('booked_table').doc(id).update({'status': 'Order Accepted'}).then(function (result) {
+        database.collection('booked_table').doc(id).update({'status': 'restaurantorders Accepted'}).then(function (result) {
             database.collection('users').where('id', '==', auth).get().then(function (snapshots) {
                 if (snapshots.docs.length) {
                     snapshots.forEach((doc) => {
@@ -358,7 +358,7 @@
         var id = this.id;
         var fullname = $(this).attr('data-name');
         var auth = $(this).attr('data-auth');
-        database.collection('booked_table').doc(id).update({'status': 'Order Rejected'}).then(function (result) {
+        database.collection('booked_table').doc(id).update({'status': 'restaurantorders Rejected'}).then(function (result) {
             database.collection('users').where('id', '==', auth).get().then(function (snapshots) {
                 if (snapshots.length) {
                     snapshots.forEach((doc) => {

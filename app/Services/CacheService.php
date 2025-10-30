@@ -2,227 +2,98 @@
 
 namespace App\Services;
 
+use App\Models\vendor_products;
 use Illuminate\Support\Facades\Cache;
-use Google\Cloud\Firestore\FirestoreClient;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use App\Models\restaurant_orders;
+use App\Models\User;
+use App\Models\Driver;
+use App\Models\Vendor;
 
 class CacheService
 {
     /**
-     * Cache Firestore query results with intelligent invalidation
-     */
-    public static function rememberFirestoreQuery($key, $callback, $ttl = 300)
-    {
-        return Cache::remember($key, $ttl, $callback);
-    }
-
-    /**
-     * Cache dashboard statistics
+     * Get dashboard statistics (cached for 1 hour)
      */
     public static function getDashboardStats($forceRefresh = false)
     {
-        $cacheKey = 'dashboard_stats';
-        
         if ($forceRefresh) {
-            Cache::forget($cacheKey);
+            Cache::forget('dashboard_stats');
         }
-        
-        return Cache::remember($cacheKey, 300, function () {
+
+        return Cache::remember('dashboard_stats', 3600, function () {
             return [
-                'total_marts' => self::getTotalMarts(),
-                'active_marts' => self::getActiveMarts(),
-                'total_orders' => self::getTotalOrders(),
-                'total_clients' => self::getTotalClients(),
-                'total_drivers' => self::getTotalDrivers(),
-                'total_earnings' => self::getTotalEarnings(),
-                'admin_commission' => self::getAdminCommission(),
-                'cached_at' => now()->toISOString()
+                'orders' => restaurant_orders::count(),
+                'products' => vendor_products::count(),
+                'users' => User::where('role', '=', 'customer')->count(),
+                'drivers' => User::where('role', '=', 'driver')->count(),
+                'vendors' => Vendor::count(),
+                'earnings' => self::getTotalEarnings(),
+                // 'earnings' => restaurant_orders::sum('toPayAmount'),
+                'orders_by_status' => [
+                    'placed'     => restaurant_orders::where('status', 'order-placed')->count(),
+                    'confirmed'  => restaurant_orders::where('status', 'order-confirmed')->count(),
+                    'shipped'    => restaurant_orders::where('status', 'order-shipped')->count(),
+                    'completed'  => restaurant_orders::where('status', 'order-completed')->count(),
+                    'canceled'   => restaurant_orders::where('status', 'order-canceled')->count(),
+                    'failed'     => restaurant_orders::where('status', 'order-failed')->count(),
+                    'pending'    => restaurant_orders::where('status', 'order-pending')->count(),
+                ],
+                'cached_at' => now()->toDateTimeString(),
             ];
         });
     }
 
     /**
-     * Get total marts count
-     */
-    private static function getTotalMarts()
-    {
-        return Cache::remember('total_marts', 600, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('vendors');
-                $documents = $collection->documents();
-                return iterator_count($documents);
-            } catch (\Exception $e) {
-                \Log::error('Error getting total marts: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Get active marts count
-     */
-    private static function getActiveMarts()
-    {
-        return Cache::remember('active_marts', 600, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('vendors');
-                $query = $collection->where('isActive', '=', true);
-                $documents = $query->documents();
-                return iterator_count($documents);
-            } catch (\Exception $e) {
-                \Log::error('Error getting active marts: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Get total orders count
-     */
-    private static function getTotalOrders()
-    {
-        return Cache::remember('total_orders', 300, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('restaurant_orders');
-                $documents = $collection->documents();
-                return iterator_count($documents);
-            } catch (\Exception $e) {
-                \Log::error('Error getting total orders: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Get total clients count
-     */
-    private static function getTotalClients()
-    {
-        return Cache::remember('total_clients', 600, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('users');
-                $query = $collection->where('role', '=', 'client');
-                $documents = $query->documents();
-                return iterator_count($documents);
-            } catch (\Exception $e) {
-                \Log::error('Error getting total clients: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Get total drivers count
-     */
-    private static function getTotalDrivers()
-    {
-        return Cache::remember('total_drivers', 600, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('users');
-                $query = $collection->where('role', '=', 'driver');
-                $documents = $query->documents();
-                return iterator_count($documents);
-            } catch (\Exception $e) {
-                \Log::error('Error getting total drivers: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Get total earnings
+     * Calculate total earnings using Eloquent
      */
     private static function getTotalEarnings()
     {
         return Cache::remember('total_earnings', 300, function () {
             try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('restaurant_orders');
-                $query = $collection->where('status', 'in', ['completed', 'delivered']);
-                $documents = $query->documents();
-                
-                $total = 0;
-                foreach ($documents as $document) {
-                    $data = $document->data();
-                    if (isset($data['toPayAmount'])) {
-                        $total += (float) $data['toPayAmount'];
-                    }
+                // ✅ Only include orders that are completed or shipped
+                $statuses = ['Order Completed', 'Order Shipped'];
+
+                // ✅ Check if the toPayAmount column exists
+                if (!Schema::hasColumn('restaurant_orders', 'toPayAmount')) {
+                    Log::warning('Column toPayAmount not found in restaurant_orders table.');
+                    return 0;
                 }
-                
-                return round($total, 2);
+
+                // ✅ Sum all toPayAmount for given statuses
+                $total = restaurant_orders::whereIn('status', $statuses)
+                    ->sum('toPayAmount');
+
+                return round((float) $total, 2);
             } catch (\Exception $e) {
-                \Log::error('Error getting total earnings: ' . $e->getMessage());
+                Log::error('Error calculating total earnings: ' . $e->getMessage());
                 return 0;
             }
         });
     }
 
     /**
-     * Get admin commission
-     */
-    private static function getAdminCommission()
-    {
-        return Cache::remember('admin_commission', 300, function () {
-            try {
-                $firestore = app(FirestoreClient::class);
-                $collection = $firestore->collection('restaurant_orders');
-                $query = $collection->where('status', 'in', ['completed', 'delivered']);
-                $documents = $query->documents();
-                
-                $total = 0;
-                foreach ($documents as $document) {
-                    $data = $document->data();
-                    if (isset($data['adminCommission'])) {
-                        $total += (float) $data['adminCommission'];
-                    }
-                }
-                
-                return round($total, 2);
-            } catch (\Exception $e) {
-                \Log::error('Error getting admin commission: ' . $e->getMessage());
-                return 0;
-            }
-        });
-    }
-
-    /**
-     * Clear all dashboard caches
+     * Clear dashboard cache
      */
     public static function clearDashboardCache()
     {
-        $keys = [
-            'dashboard_stats',
-            'total_marts',
-            'active_marts',
-            'total_orders',
-            'total_clients',
-            'total_drivers',
-            'total_earnings',
-            'admin_commission'
-        ];
-        
-        foreach ($keys as $key) {
-            Cache::forget($key);
-        }
-        
-        \Log::info('Dashboard cache cleared');
+        Cache::forget('dashboard_stats');
+        Cache::forget('total_earnings');
     }
 
     /**
-     * Get cache statistics
+     * Get cache metadata
      */
     public static function getCacheStats()
     {
-        return [
-            'total_keys' => Cache::get('cache_stats_total', 0),
-            'hit_rate' => Cache::get('cache_stats_hit_rate', 0),
-            'last_cleared' => Cache::get('cache_stats_last_cleared', 'Never'),
-            'memory_usage' => Cache::get('cache_stats_memory', 'Unknown')
-        ];
+        if (Cache::has('dashboard_stats')) {
+            return [
+                'exists' => true,
+                'cached_at' => Cache::get('dashboard_stats')['cached_at'] ?? 'Unknown',
+            ];
+        }
+
+        return ['exists' => false];
     }
 }
-

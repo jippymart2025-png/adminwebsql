@@ -325,7 +325,7 @@
                             childData.isActive? '<label class="switch"><input type="checkbox" checked id="'+childData.id+'" name="isOnline"><span class="slider round"></span></label>':'<label class="switch"><input type="checkbox" id="'+childData.id+'" name="isOnline"><span class="slider round"></span></label>',
                             '<a href="'+walletTransactions+'">{{trans("lang.wallet_history")}}</a>',
                             '<a href="'+trroute2+'">'+childData.orders+'</a>',
-                            '<span class="action-btn"><a href="'+driverView+'"><i class="mdi mdi-eye"></i></a><a href="'+route1+'"><i class="mdi mdi-lead-pencil" title="Edit"></i></a><?php if (in_array('drivers.edit', json_decode(@session('user_permissions'), true))) { ?> <a id="'+childData.id+'" name="clear-order-request-data" class="clear-order-data-btn" href="javascript:void(0)" title="Clear Order Request Data"><i class="mdi mdi-refresh"></i></a><?php } ?><?php if (in_array('driver.delete', json_decode(@session('user_permissions'), true))) { ?> <a id="'+childData.id+'" name="driver-delete" class="delete-btn" href="javascript:void(0)"><i class="mdi mdi-delete"></i></a><?php } ?></span>'
+                            '<span class="action-btn"><a href="'+driverView+'"><i class="mdi mdi-eye"></i></a><a href="'+route1+'"><i class="mdi mdi-lead-pencil" title="Edit"></i></a><?php if (in_array('drivers.edit', json_decode(@session('user_permissions'), true))) { ?> <a id="'+childData.id+'" name="clear-order-request-data" class="clear-order-data-btn" href="javascript:void(0)" title="Clear restaurantorders Request Data"><i class="mdi mdi-refresh"></i></a><?php } ?><?php if (in_array('driver.delete', json_decode(@session('user_permissions'), true))) { ?> <a id="'+childData.id+'" name="driver-delete" class="delete-btn" href="javascript:void(0)"><i class="mdi mdi-delete"></i></a><?php } ?></span>'
                         ]);
                     });
                     $('#data-table_processing').hide(); // Hide loader
@@ -399,7 +399,7 @@
                 $(".dataTables_filter").append($(".dt-buttons").detach());
 
                 // Add clear all order request data button beside search
-                var clearAllButton = '<button id="clearAllOrderRequestData" class="btn btn-warning ml-2 rounded-full"><i class="mdi mdi-refresh mr-1"></i>Clear All Order Request Data</button>';
+                var clearAllButton = '<button id="clearAllOrderRequestData" class="btn btn-warning ml-2 rounded-full"><i class="mdi mdi-refresh mr-1"></i>Clear All restaurantorders Request Data</button>';
                 $(".dataTables_filter").append(clearAllButton);
 
                 $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete','new-password').val('');
@@ -429,7 +429,7 @@
         },300));
         alldriver.get().then(async function(snapshotsdriver) {
             snapshotsdriver.docs.forEach((listval) => {
-                database.collection('restaurant_orders').where('driverID','==',listval.id).where("status","in",["Order Completed"]).get().then(async function(orderSnapshots) {
+                database.collection('restaurant_orders').where('driverID','==',listval.id).where("status","in",["restaurantorders Completed"]).get().then(async function(orderSnapshots) {
                     var count_order_complete=orderSnapshots.docs.length;
                     database.collection('users').doc(listval.id).update({'orderCompleted': count_order_complete}).then(function(result) {
                     });
@@ -663,9 +663,9 @@
                 await database.collection('users').doc(driverId).update({ orderRequestData: [] });
 
                 if (typeof toastr !== 'undefined') {
-                    toastr.success('Order request data cleared for ' + driverName);
+                    toastr.success('restaurantorders request data cleared for ' + driverName);
                 } else {
-                    alert('Order request data cleared for ' + driverName);
+                    alert('restaurantorders request data cleared for ' + driverName);
                 }
 
                 // Log activity if function exists

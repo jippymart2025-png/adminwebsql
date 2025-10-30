@@ -1287,7 +1287,7 @@
         }
     };
 
-    // Enhanced Global Real-time Order Notification System
+    // Enhanced Global Real-time restaurantorders Notification System
     (function() {
         // Initialize enhanced notification system
         let knownOrderIds = new Set();
@@ -1628,7 +1628,7 @@
         function showNewOrderNotification(orderData) {
             // Enhanced debugging for order notifications
             console.log('🔔 showNewOrderNotification called for order:', orderData.id);
-            console.log('🔔 Order data:', {
+            console.log('🔔 restaurantorders data:', {
                 id: orderData.id,
                 status: orderData.status,
                 vendorID: orderData.vendorID,
@@ -1639,7 +1639,7 @@
 
             // Check if this is a mart order by looking at vendor data
             const isMartOrder = orderData.vendor && orderData.vendor.vType === 'mart';
-            console.log('🏪 Is Mart Order:', isMartOrder);
+            console.log('🏪 Is Mart restaurantorders:', isMartOrder);
 
             // Play notification sound with enhanced debugging
             console.log('🔊 Attempting to play notification sound...');
@@ -1663,7 +1663,7 @@
             document.getElementById('toast-container').appendChild(wrapper);
 
             Swal.fire({
-                title: 'New Order Received!',
+                title: 'New restaurantorders Received!',
                 html: `<strong>Order #${orderData.id}</strong><br>From: ${orderData.vendor ? orderData.vendor.title : 'Restaurant'}`,
                 icon: 'info',
                 toast: true,
@@ -1835,7 +1835,7 @@
                                 const isMartOrder = orderData.vendor && orderData.vendor.vType === 'mart';
                                 const isRestaurantOrder = orderData.vendor && orderData.vendor.vType === 'restaurant';
 
-                                console.log('🏪 Order type detection:', {
+                                console.log('🏪 restaurantorders type detection:', {
                                     isMartOrder: isMartOrder,
                                     isRestaurantOrder: isRestaurantOrder,
                                     vendorType: orderData.vendor ? orderData.vendor.vType : 'unknown',
@@ -1850,7 +1850,7 @@
                                                    orderData.id.includes('TEST_') ||
                                                    orderData.id.toLowerCase().includes('test');
                                 const isAdminOrder = orderData.author && (orderData.author.name === 'admin' || orderData.author.name === 'Admin');
-                                const hasValidStatus = ['Order Placed', 'Order Accepted', 'Order Rejected', 'Order Completed'].includes(orderData.status);
+                                const hasValidStatus = ['restaurantorders Placed', 'restaurantorders Accepted', 'restaurantorders Rejected', 'restaurantorders Completed'].includes(orderData.status);
 
                                 console.log('🔍 Enhanced filtering checks:', {
                                     isTestOrder: isTestOrder,
@@ -1868,10 +1868,10 @@
                                 // Enhanced debugging for mart orders specifically
                                 if (isMartOrder) {
                                     console.log('🏪 MART ORDER DETECTED - Enhanced Debug Info:');
-                                    console.log('   - Order ID:', orderData.id);
+                                    console.log('   - restaurantorders ID:', orderData.id);
                                     console.log('   - Vendor ID:', orderData.vendorID);
                                     console.log('   - Vendor Title:', orderData.vendor.title);
-                                    console.log('   - Order Status:', orderData.status);
+                                    console.log('   - restaurantorders Status:', orderData.status);
                                     console.log('   - Created At:', orderCreatedAt);
                                     console.log('   - System Initialized:', isInitialized);
                                     console.log('   - Age Validation (DISABLED):', shouldProcessOrder);
@@ -1880,16 +1880,16 @@
                                 // Only show notification if system is initialized (to avoid showing old orders on page load)
                                 if (isInitialized) {
                                     console.log('🔔 Showing notification for new order:', orderData.id);
-                                    console.log('🔔 Order type:', isMartOrder ? 'MART ORDER' : isRestaurantOrder ? 'RESTAURANT ORDER' : 'UNKNOWN TYPE');
+                                    console.log('🔔 restaurantorders type:', isMartOrder ? 'MART ORDER' : isRestaurantOrder ? 'RESTAURANT ORDER' : 'UNKNOWN TYPE');
                                     showNewOrderNotification(orderData);
                                 } else {
                                     console.log('⏳ System not initialized yet, skipping visual notification for:', orderData.id);
                                 }
                             } else {
-                                console.log('❌ Order failed age validation - skipping notification:', orderData.id);
+                                console.log('❌ restaurantorders failed age validation - skipping notification:', orderData.id);
                                 console.log('   - Is very recent (≤2 minutes):', isVeryRecentOrder);
                                 console.log('   - Created after page load:', isOrderCreatedAfterPageLoad);
-                                console.log('   - Order age:', Math.round(orderAge / 1000), 'seconds');
+                                console.log('   - restaurantorders age:', Math.round(orderAge / 1000), 'seconds');
                                 console.log('   - Max allowed age:', Math.round(maxOrderAge / 1000), 'seconds');
                             }
 
@@ -1902,11 +1902,11 @@
                                 console.log('⏭️ Skipped adding order to known set (failed validation):', orderData.id);
                             }
                         } else {
-                            // Order is already known, but let's check if it's a status change that needs notification
-                            console.log('📋 Order already known (ID in known set):', orderData.id, 'Status:', orderData.status);
+                            // restaurantorders is already known, but let's check if it's a status change that needs notification
+                            console.log('📋 restaurantorders already known (ID in known set):', orderData.id, 'Status:', orderData.status);
 
                             // Check if this is a status change that should trigger notification
-                            const shouldNotifyStatus = ['Order Accepted', 'Order Rejected', 'Order Completed'].includes(orderData.status);
+                            const shouldNotifyStatus = ['restaurantorders Accepted', 'restaurantorders Rejected', 'restaurantorders Completed'].includes(orderData.status);
 
                             if (shouldNotifyStatus && isInitialized) {
                                 console.log('🔔 Status change detected for known order (email notifications disabled):', orderData.id);
@@ -2030,14 +2030,14 @@
             setTimeout(() => {
                 // Only initialize order listener on pages that need it (not on settings pages)
                 const currentPath = window.location.pathname;
-                const isSettingsPage = currentPath.includes('/settings/') || 
+                const isSettingsPage = currentPath.includes('/settings/') ||
                                      currentPath.includes('/zone/bonus-settings') ||
                                      currentPath.includes('/test/');
-                
+
                 if (!isSettingsPage) {
                     initializeOrderListener();
                 }
-                
+
                 initializeTooltip();
                 initializeSoundControls();
                 initializeImpersonationAutoLogin(); // Initialize impersonation auto-login
@@ -2106,7 +2106,7 @@
         //             vendor: { title: 'Test Restaurant' },
         //             author: { name: 'Test Customer' },
         //             toPayAmount: 25.00,
-        //             status: 'Order Placed'
+        //             status: 'restaurantorders Placed'
         //         };
         //         showNewOrderNotification(testOrderData);
         //     },

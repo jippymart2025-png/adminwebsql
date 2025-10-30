@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\User;
+use App\Models\admin_users;
 use App\Models\Permission;
 use Auth;
 use Closure;
@@ -26,7 +26,7 @@ class CheckUserRoleMiddleware
 
             $role_has_permissions = array_unique($role_has_permissions);
 
-            $users = User::join('role', 'role.id', '=', 'users.role_id')->where('users.id', '=', $user->id)->select('role.role_name as roleName')->first();
+            $users = admin_users::join('role', 'role.id', '=', 'admin_users.role_id')->where('admin_users.id', '=', $user->id)->select('role.role_name as roleName')->first();
 
             session(['user_role' => $users->roleName, 'user_permissions' => json_encode($role_has_permissions)]);
 

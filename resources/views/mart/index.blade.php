@@ -793,7 +793,7 @@
     async function getOrdersTotalData(id) {
         var order_total = 0;
         var commission_total = 0;
-        await database.collection('restaurant_orders').where('status','==','Order Completed').where('vendorID', '==', id).get().then(async function (productSnapshots) {
+        await database.collection('restaurant_orders').where('status','==','restaurantorders Completed').where('vendorID', '==', id).get().then(async function (productSnapshots) {
             if(productSnapshots && productSnapshots.docs && productSnapshots.docs.length > 0){
                 productSnapshots.docs.forEach(function (doc) {
                     var order = doc.data();

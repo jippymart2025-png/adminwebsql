@@ -15,7 +15,7 @@
         </div>
     </div>
     <div class="container-fluid">
-       <div class="admin-top-section"> 
+       <div class="admin-top-section">
         <div class="row">
             <div class="col-12">
                 <div class="d-flex top-title-section pb-4 justify-content-between">
@@ -26,13 +26,13 @@
                     </div>
                     <div class="d-flex top-title-right align-self-center">
                         <div class="select-box pl-3">
-                     
+
                         </div>
                     </div>
                 </div>
             </div>
-        </div> 
-      
+        </div>
+
        </div>
        <div class="table-list">
        <div class="row">
@@ -112,10 +112,10 @@
                     <p class="mb-0 text-dark-2">{{trans('lang.wallet_transactions_table_text')}}</p>
                    </div>
                    <div class="card-header-right d-flex align-items-center">
-                    <div class="card-header-btn mr-3"> 
+                    <div class="card-header-btn mr-3">
                         <!-- <a class="btn-primary btn rounded-full" href="{!! route('users.create') !!}"><i class="mdi mdi-plus mr-2"></i>{{trans('lang.user_create')}}</a> -->
                      </div>
-                   </div>                
+                   </div>
                  </div>
                  <div class="card-body">
                          <div class="table-responsive m-t-10">
@@ -247,7 +247,7 @@
                 }
                 await ref.get().then(async function (querySnapshot) {
                     if (querySnapshot.empty) {
-                        $('.total_count').text(0); 
+                        $('.total_count').text(0);
                         console.error("No data found in Firestore.");
                         $('#data-table_processing').hide(); // Hide loader
                         callback({
@@ -278,12 +278,12 @@
                         childData.user = user;
                         childData.role = role;
                         childData.payoutuser=payoutuser
-                        childData.id = doc.id;    
+                        childData.id = doc.id;
                         childData.transactionamount = childData.amount;
                         if (!isNaN(childData.transactionamount)) {
                             childData.transactionamount = parseFloat(childData.transactionamount).toFixed(decimal_degits);
                         }
-                        if ((childData.hasOwnProperty('isTopUp') && childData.isTopUp) || (childData.payment_method == "Cancelled Order Payment")) {
+                        if ((childData.hasOwnProperty('isTopUp') && childData.isTopUp) || (childData.payment_method == "Cancelled restaurantorders Payment")) {
                             if (currencyAtRight) {
                                 childData.transactionamount =  parseFloat(childData.transactionamount).toFixed(decimal_degits) + '' + currentCurrency;
                             } else {
@@ -346,7 +346,7 @@
                         }
                     });
                     const totalRecords = filteredRecords.length;
-                    $('.total_count').text(totalRecords); 
+                    $('.total_count').text(totalRecords);
                     const paginatedRecords = filteredRecords.slice(start, start + length);
                     await Promise.all(paginatedRecords.map(async (childData) => {
                         var getData = await buildHTML(childData);
@@ -418,7 +418,7 @@
                             action: function (e, dt, button, config) {
                                 exportData(dt, 'pdf',fieldConfig);
                             }
-                        },   
+                        },
                         {
                             extend: 'csvHtml5',
                             text: 'Export CSV',
@@ -433,7 +433,7 @@
                 $(".dataTables_filter").append($(".dt-buttons").detach());
                 $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete','new-password').val('');
                 $('.dataTables_filter label').contents().filter(function() {
-                    return this.nodeType === 3; 
+                    return this.nodeType === 3;
                 }).remove();
             }
         });
@@ -478,7 +478,7 @@
                         routeuser = routeuser.replace(':id', val.payoutuser.vendorID);
                     }
                 }
-         
+
                 html.push('<a href="' + routeuser + '">' + user_name + '</a>');
                 html.push(user_role);
             } else {
@@ -490,7 +490,7 @@
         if (!isNaN(amount)) {
             amount = parseFloat(amount).toFixed(decimal_degits);
         }
-        if ((val.hasOwnProperty('isTopUp') && val.isTopUp) || (val.payment_method == "Cancelled Order Payment")) {
+        if ((val.hasOwnProperty('isTopUp') && val.isTopUp) || (val.payment_method == "Cancelled restaurantorders Payment")) {
             if (currencyAtRight) {
                 html.push('<span class="text-green">' + parseFloat(amount).toFixed(decimal_degits) + '' + currentCurrency + '</span>');
             } else {
@@ -562,7 +562,7 @@
             } else if (val.payment_method == "MidTrans" || val.payment_method == "midtrans") {
                 image = '{{asset("images/midtrans.png")}}';
                 payment_method = '<img alt="image" src="' + image + '" >';
-            } else if (val.payment_method == "Cancelled Order Payment") {
+            } else if (val.payment_method == "Cancelled restaurantorders Payment") {
                 image = '{{asset("images/cancel_order.png")}}';
                 payment_method = '<img alt="image" src="' + image + '" >';
             } else if (val.payment_method == "Refund Amount") {

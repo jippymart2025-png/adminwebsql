@@ -141,7 +141,7 @@
                     }];
                 }
             }
-            
+
             if (that.options.sortPriority !== null) {
                 if ($rows.length < that.options.sortPriority.length && typeof that.options.sortPriority === 'object') {
                     for (var i = 0; i < that.options.sortPriority.length; i++) {
@@ -188,7 +188,7 @@
             return "Column";
         },
         formatOrder: function() {
-            return "Order";
+            return "restaurantorders";
         },
         formatSortBy: function() {
             return "Sort by";
@@ -259,7 +259,7 @@
 
     BootstrapTable.prototype.onMultipleSort = function() {
         var that = this;
-        
+
         var cmp = function(x, y) {
             return x > y ? 1 : x < y ? -1 : 0;
         };

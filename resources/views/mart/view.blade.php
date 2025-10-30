@@ -419,7 +419,7 @@
                                     <p><span class="item_limit"></span></p>
                                 </div>
                                 <div class="col-md-3 update-limit-div" style="display:none">
-                                    <a href="javascript:void(0)" data-toggle="modal" data-target="#updateLimitModal" 
+                                    <a href="javascript:void(0)" data-toggle="modal" data-target="#updateLimitModal"
                                         class="btn-primary btn rounded-full update-limit">{{trans('lang.update_plan_limit')}}</a>
                                 </div>
                                 <div class="col-md-6">
@@ -842,7 +842,7 @@
                 }
                 var currentHours=hour+':'+minute;
                 $(".vendor_avtive").text("Closed").removeClass("green").addClass("red");
-                
+
                 // Check if restaurant is manually set to closed
                 if(restaurant.hasOwnProperty('isOpen') && restaurant.isOpen === false) {
                     $(".vendor_avtive").text("Closed").removeClass("green").addClass("red");
@@ -873,7 +873,7 @@
                             isOpenBasedOnHours = true;
                         }
                     }
-                    
+
                     if(isOpenBasedOnHours) {
                         $(".vendor_avtive").text("Open").removeClass("red").addClass("green");
                     }
@@ -912,7 +912,7 @@
                                             ${features.chat? `<li>${translations.chatingOption}</li>`:''}
                                             ${features.dineIn? `<li>${translations.dineInOption}</li>`:''}
                                             ${features.qrCodeGenerate? `<li>${translations.generateQrCode}</li>`:''}
-                                            ${features.restaurantMobileApp? `<li>${translations.mobileAppAccess}</li>`:''}    
+                                            ${features.restaurantMobileApp? `<li>${translations.mobileAppAccess}</li>`:''}
                                     </ul>`;
                         $('.plan_features').html(html);
                     }
@@ -1020,7 +1020,7 @@
                 } else {
                     $(".dine_in_future").html("OFF").removeClass("green").addClass("red");
                 }
-                
+
                 // Display isOpen status
                 if(restaurant.hasOwnProperty('isOpen') && restaurant.isOpen === false) {
                     $(".restaurant_is_open").html("Closed").removeClass("green").addClass("red");
@@ -1055,7 +1055,7 @@
                             .attr("value",data.id)
                             .text(data.title));
                     });
-                    
+
                     // Handle multiple category selection for existing restaurant
                     if (restaurant.categoryID) {
                         if (Array.isArray(restaurant.categoryID)) {
@@ -1171,7 +1171,7 @@
     async function getTotalEarnings() {
         var totalEarning=0;
         var adminCommission=0;
-        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').where('status','in',["Order Completed"]).get().then(async function(orderSnapshots) {
+        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').where('status','in',["restaurantorders Completed"]).get().then(async function(orderSnapshots) {
             var paymentData=orderSnapshots.docs;
             paymentData.forEach((order) => {
                 var orderData=order.data();
@@ -1267,12 +1267,12 @@
                                         </div>`;
                         var buttonText=(activeClass=='')?
                                     "{{ trans('lang.select_plan') }}":
-                                    "{{ trans('lang.renew_plan') }}";                
-                        
+                                    "{{ trans('lang.renew_plan') }}";
+
                         html+=`<div class="pricing-card-btm">
                                             <a href="javascript:void(0)" onClick="chooseSubscriptionPlan('${data.id}')" class="btn rounded-full active-btn btn-primary">${buttonText}</a>
                                         </div>`;
-                        
+
                         html+=`</div>
                         </div>`;
                     }
@@ -1288,7 +1288,7 @@
                         var buttonText=(activeClass=='')?
                                     "{{ trans('lang.select_plan') }}":
                                     "{{ trans('lang.renew_plan') }}";
-                                 
+
                         html+=`<div class="col-md-3 mt-2 pricing-card pricing-card-subscription ${data.name}">
                             <div class="pricing-card-inner">
                                 <div class="pricing-card-top">
@@ -1307,16 +1307,16 @@
                                     ${features.chat? `<li><span class="mdi mdi-check"></span>${translations.chatingOption}</li>`:`<li><span class="mdi mdi-close"></span>${translations.chatingOption}</li>`}
                                     ${features.dineIn? `<li><span class="mdi mdi-check"></span>${translations.dineInOption}</li>`:`<li><span class="mdi mdi-close"></span>${translations.dineInOption}</li>`}
                                     ${features.qrCodeGenerate? `<li><span class="mdi mdi-check"></span>${translations.generateQrCode}</li>`:`<li><span class="mdi mdi-close"></span>${translations.generateQrCode}</li>`}
-                                    ${features.restaurantMobileApp? `<li><span class="mdi mdi-check"></span>${translations.mobileAppAccess}</li>`:`<li><span class="mdi mdi-close"></span>${translations.mobileAppAccess}</li>`}    
+                                    ${features.restaurantMobileApp? `<li><span class="mdi mdi-check"></span>${translations.mobileAppAccess}</li>`:`<li><span class="mdi mdi-close"></span>${translations.mobileAppAccess}</li>`}
                                     <li><span class="mdi mdi-check"></span>${data.orderLimit==-1? "{{ trans('lang.unlimited') }}":data.orderLimit} {{ trans('lang.orders') }}</li>
                                     <li><span class="mdi mdi-check"></span>${data.itemLimit==-1? "{{ trans('lang.unlimited') }}":data.itemLimit} {{ trans('lang.products') }}</li>
                                 </ul>
                                 </div>`;
-                        
+
                             html+=`<div class="pricing-card-btm">
                                         <a href="javascript:void(0)" onClick="chooseSubscriptionPlan('${data.id}')" class="btn rounded-full">${buttonText}</a>
                                     </div>`;
-                        
+
                         html+=`</div>
                         </div>`;
                     }
@@ -1344,9 +1344,9 @@
         if(activePlan) {
             let activePlan_price=currencyAtRight? parseFloat(activePlan.price).toFixed(decimal_degits)+currentCurrency
                 :currentCurrency+parseFloat(activePlan.price).toFixed(decimal_degits);
-            html+=` 
+            html+=`
             <div class="col-md-8">
-                <div class="subscription-card-left"> 
+                <div class="subscription-card-left">
                     <div class="row align-items-center">
                         <div class="col-md-5">
                             <div class="subscription-card text-center">
@@ -1395,9 +1395,9 @@
                 </div>
             </div>`;
         } else {
-            html+=` 
+            html+=`
             <div class="col-md-6">
-                <div class="subscription-card-left"> 
+                <div class="subscription-card-left">
                     <div class="row align-items-center">
                         <div class="col-md-12">
                             <div class="subscription-card text-center">

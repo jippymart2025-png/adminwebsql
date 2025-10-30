@@ -557,19 +557,19 @@ return [
 
     'dashboard_total_restaurants' => 'Total Restaurants',
 
-    'dashboard_order_placed' => 'Order Placed',
+    'dashboard_order_placed' => 'restaurantorders Placed',
 
-    'dashboard_order_confirmed' => 'Order Confirmed',
+    'dashboard_order_confirmed' => 'restaurantorders Confirmed',
 
     'dashboard_ride_confirmed' => 'Ride Confirmed',
 
-    'dashboard_order_shipped' => 'Order Shipped',
+    'dashboard_order_shipped' => 'restaurantorders Shipped',
 
-    'dashboard_order_completed' => 'Order Completed',
+    'dashboard_order_completed' => 'restaurantorders Completed',
 
     'dashboard_ride_completed' => 'Ride Completed',
 
-    'dashboard_order_canceled' => 'Order Canceled',
+    'dashboard_order_canceled' => 'restaurantorders Canceled',
 
     'dashboard_ride_canceled' => 'Ride Canceled',
 
@@ -762,27 +762,27 @@ return [
 
     'old_password_help' => 'Insert your old password',
 
-    'order_accepted' => "Order Accepted",
+    'order_accepted' => "restaurantorders Accepted",
 
-    'order_completed' => "Order Completed",
+    'order_completed' => "restaurantorders Completed",
 
-    'order_id' => 'Order ID',
+    'order_id' => 'restaurantorders ID',
 
-    'order_order_status_id' => 'Order Status',
+    'order_order_status_id' => 'restaurantorders Status',
 
-    'order_placed' => "Order Placed",
+    'order_placed' => "restaurantorders Placed",
 
     'order_plural' => 'Orders',
 
     'all_status' => "All Status",
 
-    'order_rejected' => "Order Rejected",
+    'order_rejected' => "restaurantorders Rejected",
 
-    'order_review' => "Order Review",
+    'order_review' => "restaurantorders Review",
 
-    'order_review_table' => 'Order Review List',
+    'order_review_table' => 'restaurantorders Review List',
 
-    'order_shipped' => "Order Shipped",
+    'order_shipped' => "restaurantorders Shipped",
 
     'order_user_id' => 'Client',
 
@@ -1095,11 +1095,11 @@ return [
 
     'enter_size_and_price_error' => "Please enter Size and Price",
 
-    'order_type' => "Order Type",
+    'order_type' => "restaurantorders Type",
 
     'order_takeaway' => "Take away",
 
-    'order_delivery' => "Order Delivery",
+    'order_delivery' => "restaurantorders Delivery",
 
     'enter_cat_title_error' => "Enter Categories Title!",
 
@@ -1214,7 +1214,7 @@ return [
 
     'driver_removal_success' => 'Driver removed successfully',
 
-    'order_not_eligible_assignment' => 'Order is not eligible for manual assignment',
+    'order_not_eligible_assignment' => 'restaurantorders is not eligible for manual assignment',
 
     'driver_not_active' => 'Driver is not active',
 
@@ -1292,7 +1292,7 @@ return [
 
     'category_edit' => 'Edit Category',
 
-    'order_edit' => 'Edit Order',
+    'order_edit' => 'Edit restaurantorders',
 
     'coupon_restaurant_id' => 'Restaurant',
 
@@ -1572,11 +1572,11 @@ return [
 
     'wallet_Balance' => 'Wallet Balance',
 
-    'order_transaction_table' => 'Order Transaction List',
+    'order_transaction_table' => 'restaurantorders Transaction List',
 
-    'order_transactions' => 'Order Transactions',
+    'order_transactions' => 'restaurantorders Transactions',
 
-    'order_history' => 'Order History',
+    'order_history' => 'restaurantorders History',
 
     'wallet_history' => 'Wallet History',
 
@@ -1600,7 +1600,7 @@ return [
 
     'user_email_required' => 'User Email is Required.',
 
-    'print_order' => 'Print Order',
+    'print_order' => 'Print restaurantorders',
 
     'thank_you' => '"""THANK YOU"""',
 
@@ -1656,7 +1656,7 @@ return [
 
     'photo' => 'Photo',
 
-    'set_order' => 'Set Order',
+    'set_order' => 'Set restaurantorders',
 
     'is_publish' => 'Is Publish',
 
@@ -1670,7 +1670,7 @@ return [
 
     'offer' => 'Offer',
 
-    'set_order_error' => 'Please Enter Order!!',
+    'set_order_error' => 'Please Enter restaurantorders!!',
 
     'set_external_error' => 'Please Enter External Link!!',
 
@@ -1894,11 +1894,11 @@ return [
 
     'general_notification' => 'Send Notifications',
 
-    'driverOrderAcceptRejectDuration' => 'Driver Order Accept Reject Duration',
+    'driverOrderAcceptRejectDuration' => 'Driver restaurantorders Accept Reject Duration',
 
     'second' => 'Second',
 
-    'driverOrderAcceptRejectDuration_error' => 'Driver Order Accept Reject Duration Required.',
+    'driverOrderAcceptRejectDuration_error' => 'Driver restaurantorders Accept Reject Duration Required.',
 
     'tax_plural' => 'Taxes',
 
@@ -1950,25 +1950,25 @@ return [
 
     'prepare_time' => 'Estimeted Prepare Time',
 
-    'order_rejected_by_restaurant' => 'Order Rejected By Restaurant',
+    'order_rejected_by_restaurant' => 'restaurantorders Rejected By Restaurant',
 
-    'order_accepted_by_restaurant' => 'Order Accepted By Restaurant',
+    'order_accepted_by_restaurant' => 'restaurantorders Accepted By Restaurant',
 
-    'takeaway_order_completed' => 'Takeaway Order Completed',
+    'takeaway_order_completed' => 'Takeaway restaurantorders Completed',
 
-    'driver_completed_order' => 'Driver Completed Order',
+    'driver_completed_order' => 'Driver Completed restaurantorders',
 
-    'driver_accepted_order' => 'Driver Accepted Order',
+    'driver_accepted_order' => 'Driver Accepted restaurantorders',
 
     'dine_order_book_canceled' => 'Dine order Booking canceled',
 
     'dine_order_book_accepted' => 'Dine order Booking Accepted',
 
-    'new_order_place' => 'New Order Place',
+    'new_order_place' => 'New restaurantorders Place',
 
     'new_dine_booking' => 'New Dine booking',
 
-    'shedule_order' => 'Schedule Order',
+    'shedule_order' => 'Schedule restaurantorders',
 
     'pament_received' => 'Payment Received',
 
@@ -2022,7 +2022,7 @@ return [
 
     'edit_email_templates' => 'Edit Email Templates',
 
-    'new_order_placed' => 'New Order Place',
+    'new_order_placed' => 'New restaurantorders Place',
 
     'new_vendor_signup' => 'New registration of vendor',
 
@@ -2223,7 +2223,7 @@ return [
     'zone_bonus_updated' => 'Zone bonus setting updated successfully',
     'zone_bonus_deleted' => 'Zone bonus setting deleted successfully',
     'select_zone' => 'Select Zone',
-    
+
     // Driver Wallet Management
     'driver_wallet_management' => 'Driver Wallet Management',
     'driver_wallets' => 'Driver Wallets',
@@ -2236,7 +2236,7 @@ return [
     'description_help' => 'Description for this credit',
     'driver_name' => 'Driver Name',
     'phone' => 'Phone',
-    'order_wallet' => 'Order Wallet',
+    'order_wallet' => 'restaurantorders Wallet',
     'earnings_wallet' => 'Earnings Wallet',
     'total_wallet' => 'Total Wallet',
     'today_orders' => 'Today Orders',
@@ -2247,7 +2247,7 @@ return [
     'date' => 'Date',
     'type' => 'Type',
     'category' => 'Category',
-    'order_id' => 'Order ID',
+    'order_id' => 'restaurantorders ID',
     'check_zone_bonus' => 'Check Zone Bonus',
     'refresh' => 'Refresh',
 
@@ -2473,9 +2473,9 @@ return [
     'enable_any_one_business_model'=>'Atleast one business model should be enabled',
     'generate_qr_code'=>'Generate QR Code',
     'maximum_item_limit'=>'Maximum Item Limit',
-    'maximum_order_limit' => 'Maximum Order Limit',
+    'maximum_order_limit' => 'Maximum restaurantorders Limit',
     'enter_display_order'=>'Enter display order',
-    'order'=>'Set Order',
+    'order'=>'Set restaurantorders',
     'enable_subscription_plan_confirm_alert'=>'Are you sure you want to enable the subscription model?',
     'disable_subscription_plan_confirm_alert'=>'Are you sure you want to disable the subscription model?',
     'commission_based_model_settings'=>'Commission Based Model Settings',
@@ -2506,7 +2506,7 @@ return [
     'order_table'=>'Orders list',
     'current_subscriber_list_of'=>'Current Subscriber list of',
     'current_subscriber_list'=>'Current Subscriber List',
-    'order_limit'=>'Order Limit',
+    'order_limit'=>'restaurantorders Limit',
     'item_limit'=>'Item Limit',
     'bulk_update_commission_tooltip'=>'Apply bulk admin commission updates to all restaurants or select specific restaurants to update.',
     'current_plan'=>'Current Plan',
@@ -2528,7 +2528,7 @@ return [
     'select_plan' => 'Select Plan',
     'commission_based' => 'Commssion Base',
     'pay_commission_of' => 'Pay commission of',
-    'commision_per_order' => ' Commission - Per Order',
+    'commision_per_order' => ' Commission - Per restaurantorders',
     'chating_option'=>'Chating Option',
     'mobile_app_access'=>'Mobile App Access',
     'dinein_option'=>'DineIn Option',
@@ -2612,7 +2612,7 @@ return [
     'location'=>'Location',
     'plan_expire_at'=>'Plan Expire At',
     'enter_item_limit'=>'Enter Item Limit',
-    'enter_order_limit'=>'Enter Order Limit',
+    'enter_order_limit'=>'Enter restaurantorders Limit',
     'commision_plan_will_be_always_at_first'=>'Commission Plan will be always at first position.please enter other than 0',
     'number_of_days'=>'Number of Days',
     'total_price'=>'Total Price',

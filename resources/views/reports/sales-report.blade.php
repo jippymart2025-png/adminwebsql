@@ -202,9 +202,9 @@
                 var vendorData = ((orderObj.vendor && orderObj.vendor != null) ? orderObj.vendor : '');
                 var date = orderObj.createdAt.toDate();
                 var distanceType = ((orderObj.distanceType && orderObj.distanceType != "" && orderObj.distanceType != null) ? orderObj.distanceType : "");
-                finalOrderObject['Order ID'] = orderId;
+                finalOrderObject['restaurantorders ID'] = orderId;
                 finalOrderObject['Restaurant Name'] = ((vendorData.title) ? vendorData.title : "");
-                finalOrderObject['Driver Name'] = ((driverData.firstName) ? ((driverData.lastName) ? driverData.firstName + ' ' + driverData.lastName : driverData.firstName) : "");  
+                finalOrderObject['Driver Name'] = ((driverData.firstName) ? ((driverData.lastName) ? driverData.firstName + ' ' + driverData.lastName : driverData.firstName) : "");
                 finalOrderObject['Driver Email'] = ((driverData.email) ? shortEmail(driverData.email) : "");
                 if(driverData.phoneNumber!="" && driverData.phoneNumber != null){
                     var phoneNumber = shortEditNumber(driverData.phoneNumber);
@@ -335,7 +335,7 @@
             var fileFormat = $(".file_format :selected").val();
             let start_date = moment($('#reportrange').data('daterangepicker').startDate).toDate();
             let end_date = moment($('#reportrange').data('daterangepicker').endDate).toDate();
-            var headerArray = ['Order ID', 'Restaurant Name', 'Driver Name', 'Driver Email', 'Driver Phone', 'User Name', 'User Email', 'User Phone', 'Date', 'Category', 'Payment Method', 'Total', 'Admin Commission'];
+            var headerArray = ['restaurantorders ID', 'Restaurant Name', 'Driver Name', 'Driver Email', 'Driver Phone', 'User Name', 'User Email', 'User Phone', 'Date', 'Category', 'Payment Method', 'Total', 'Admin Commission'];
             var headers = [];
             $(".error_top").html("");
             if (fileFormat == 'xls' || fileFormat == 'csv') {
@@ -365,7 +365,7 @@
                 window.scrollTo(0, 0);
             } else {
                 jQuery("#overlay").show();
-                var ordersRef = database.collection('restaurant_orders').where('status', 'in', ["Order Completed"]).orderBy('createdAt', 'desc');
+                var ordersRef = database.collection('restaurant_orders').where('status', 'in', ["restaurantorders Completed"]).orderBy('createdAt', 'desc');
                 if (restaurant != "") {
                     ordersRef = ordersRef.where('vendorID', '==', restaurant)
                 }
@@ -388,10 +388,10 @@
                     if (orderSnapshots.docs.length > 0) {
                         var reportData = await getReportData(orderSnapshots, fileFormat);
                         generateReport(reportData, headers, fileFormat);
-                        
+
                         // Log report generation
                         await logActivity('reports', 'generated', 'Generated sales report in ' + fileFormat.toUpperCase() + ' format');
-                        
+
                         jQuery("#overlay").hide();
                         setDate();
                         $('.file_format').val('').trigger('change');

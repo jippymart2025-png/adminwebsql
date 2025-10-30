@@ -31,7 +31,7 @@ class OrderController extends Controller
 
         // Email notifications removed to prevent resource issues on shared hosting
 
-        if(Storage::disk('local')->has('firebase/credentials.json') && ($orderStatus=="Order Accepted" || $orderStatus=="Order Rejected"|| $orderStatus=="Order Completed" || $orderStatus=="Driver Accepted")){
+        if(Storage::disk('local')->has('firebase/credentials.json') && ($orderStatus=="restaurantorders Accepted" || $orderStatus=="restaurantorders Rejected"|| $orderStatus=="restaurantorders Completed" || $orderStatus=="Driver Accepted")){
 
             $client= new Google_Client();
             $client->setAuthConfig(storage_path('app/firebase/credentials.json'));

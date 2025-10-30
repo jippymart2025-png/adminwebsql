@@ -96,15 +96,15 @@ class FirebaseOrderController extends Controller
         // Get total count and status breakdown (cached)
         $totalCount = null;
         $countersCacheKey = "firebase_orders_counts_v4_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any');
-        
+
         // Always try to get counters from cache first
         $counters = Cache::get($countersCacheKey);
-        
+
         // If not in cache AND (page 1 OR with_total requested), calculate it
         if ($counters === null && ($page === 1 || $request->query('with_total') === '1')) {
             $counters = Cache::remember($countersCacheKey, 300, function () use ($statusFilter, $vendorID) {
                 $base = $this->firestore->collection('restaurant_orders');
-                
+
                 if (!empty($statusFilter)) {
                     $base = $base->where('status', '==', $statusFilter);
                 }
@@ -121,7 +121,7 @@ class FirebaseOrderController extends Controller
                 foreach ($base->select(['__name__', 'status'])->documents() as $doc) {
                     $total++;
                     $status = strtolower(trim((string) ($doc->data()['status'] ?? '')));
-                    
+
                     if (in_array($status, ['order placed', 'order accepted', 'order shipped', 'in transit', 'driver pending'])) {
                         $activeOrders++;
                     }
@@ -145,7 +145,7 @@ class FirebaseOrderController extends Controller
                 ];
             });
         }
-        
+
         // Set total count if counters are available
         if ($counters !== null) {
             $totalCount = $counters['total'] ?? 0;
@@ -172,7 +172,7 @@ class FirebaseOrderController extends Controller
 
     /**
      * Transform order data to return only necessary fields
-     * Fields: Order ID, Restaurant, Drivers, Client, Date, Amount, Order Type, Order Status
+     * Fields: restaurantorders ID, Restaurant, Drivers, Client, Date, Amount, restaurantorders Type, restaurantorders Status
      */
     private function transformOrderData(array $data, string $docId): array
     {
@@ -184,7 +184,7 @@ class FirebaseOrderController extends Controller
                 $discountPrice = $this->sanitizeNumber($product['discountPrice'] ?? 0);
                 $quantity = (int) ($product['quantity'] ?? 1);
                 $extrasPrice = $this->sanitizeNumber($product['extras_price'] ?? 0);
-                
+
                 $itemPrice = $discountPrice > 0 ? $discountPrice : $price;
                 $productTotal += ($itemPrice + $extrasPrice) * $quantity;
             }
@@ -194,7 +194,7 @@ class FirebaseOrderController extends Controller
         $discount = $this->sanitizeNumber($data['discount'] ?? 0);
         $tipAmount = $this->sanitizeNumber($data['tip_amount'] ?? 0);
         $specialDiscount = $this->sanitizeNumber($data['specialDiscount']['special_discount'] ?? 0);
-        
+
         $totalAmount = $productTotal + $deliveryCharge + $tipAmount - $discount - $specialDiscount;
 
         // Extract restaurant info
@@ -212,34 +212,34 @@ class FirebaseOrderController extends Controller
         $driverId = $data['driverID'] ?? null;
         $driverName = null;
         $driverPhone = null;
-        
+
         // Note: Driver details might need to be fetched separately if not in order doc
         // For now, we just return the driverID
 
-        // Order type (takeaway or delivery)
+        // restaurantorders type (takeaway or delivery)
         $orderType = isset($data['takeAway']) && $data['takeAway'] === true ? 'Takeaway' : 'Delivery';
 
         // Format date
         $createdAt = $this->formatTimestamp($data['createdAt'] ?? null);
 
         return [
-            // Order ID
+            // restaurantorders ID
             'order_id' => $data['id'] ?? $docId,
-            
+
             // Restaurant details
             'restaurant' => [
                 'id' => $restaurantId,
                 'name' => $restaurantName,
                 'photo' => $restaurantPhoto,
             ],
-            
+
             // Driver details
             'driver' => [
                 'id' => $driverId,
                 'name' => $driverName, // May need separate query to populate
                 'phone' => $driverPhone,
             ],
-            
+
             // Client details
             'client' => [
                 'id' => $clientId,
@@ -247,11 +247,11 @@ class FirebaseOrderController extends Controller
                 'phone' => $clientPhone,
                 'email' => $clientEmail,
             ],
-            
+
             // Date
             'date' => $createdAt,
             'created_at_raw' => $data['createdAt'] ?? null,
-            
+
             // Amount
             'amount' => number_format($totalAmount, 2, '.', ''),
             'amount_breakdown' => [
@@ -260,16 +260,16 @@ class FirebaseOrderController extends Controller
                 'tip' => number_format($tipAmount, 2, '.', ''),
                 'discount' => number_format($discount + $specialDiscount, 2, '.', ''),
             ],
-            
-            // Order Type
+
+            // restaurantorders Type
             'order_type' => $orderType,
-            
-            // Order Status
+
+            // restaurantorders Status
             'status' => $data['status'] ?? 'Unknown',
-            
+
             // Payment method
             'payment_method' => $data['payment_method'] ?? '',
-            
+
             // Additional useful fields
             'products_count' => isset($data['products']) ? count($data['products']) : 0,
             'address' => $data['address']['locality'] ?? '',

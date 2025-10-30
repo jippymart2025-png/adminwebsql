@@ -1,8 +1,8 @@
 @extends('layouts.app')
 @section('content')
-<?php 
+<?php
 $back_url=url()->current();
-if(isset($_GET['id'])){ 
+if(isset($_GET['id'])){
   $back_url=route('restaurants.booktable',$_GET['id']);
 }
 ?>
@@ -25,7 +25,7 @@ if(isset($_GET['id'])){
        <div class="row restaurant_payout_create">
           <div class="restaurant_payout_create-inner">
           <fieldset>
-              <legend>{{trans('lang.book_table')}}</legend>   
+              <legend>{{trans('lang.book_table')}}</legend>
             <div class="form-group row width-50">
                 <label class="col-3 control-label">{{trans('lang.date')}}</label>
                 <div class="col-7">
@@ -88,10 +88,10 @@ if(isset($_GET['id'])){
             </div>
           </div>
           <div class="form-group row width-100">
-              <div class="form-check">                    
+              <div class="form-check">
                 <input type="checkbox" class="first_visit" id="first_visit" disabled>
                 <label class="form-check-label" for="first_visit">
-                {{trans('lang.first_visit')}} 
+                {{trans('lang.first_visit')}}
               </label>
               </div>
             </div>
@@ -163,14 +163,14 @@ $(document).ready(function(){
   $(".edit-form-btn").click(function(){
         var status = $("#booking_status").val();
          database.collection('booked_table').doc(id).update({'status':status}).then(function(result){
-        if(status=="Order Rejected"){
+        if(status=="restaurantorders Rejected"){
               type='booktable_request_reject';
-          }else if(status=="Order Placed"){
+          }else if(status=="restaurantorders Placed"){
               type='';
-          }else if(status=="Order Accepted"){
+          }else if(status=="restaurantorders Accepted"){
               type='booktable_request_accepted';
           }
-          database.collection('users').where('id','==',auth).get().then( function(snapshots){  
+          database.collection('users').where('id','==',auth).get().then( function(snapshots){
             if(snapshots.length && type==''){
                 snapshots.forEach((doc) => {
                         if(doc.fcmToken){
@@ -196,7 +196,7 @@ $(document).ready(function(){
                 window.location.href = '{{ url()->current() }}';
             }
         });
-      });  
+      });
   })
 })
 </script>

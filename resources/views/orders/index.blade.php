@@ -234,7 +234,7 @@
     console.log('=== FIREBASE CONNECTION TEST ===');
     console.log('Firebase Firestore instance:', database);
     console.log('Firebase app:', firebase.app());
-    
+
     var vendor_id='<?php echo $id; ?>';
     var append_list='';
     var redData=ref;
@@ -260,7 +260,7 @@
     var search=jQuery("#search").val();
     var refData=database.collection('restaurant_orders');
     var ref='';
-    
+
     console.log('=== VARIABLE INITIALIZATION DEBUG ===');
     console.log('order_status:', order_status);
     console.log('search:', search);
@@ -290,7 +290,7 @@
 } else {
     echo '';
 } ?>';
-    
+
     console.log('=== URL PARAMETERS DEBUG ===');
     console.log('getId:', getId);
     console.log('userID:', userID);
@@ -314,19 +314,19 @@
         }
     } else if(orderStatus) {
         if(orderStatus=='order-placed') {
-            ref=refData.orderBy('createdAt','desc').where('status','==','Order Placed');
+            ref=refData.orderBy('createdAt','desc').where('status','==','restaurantorders Placed');
         }
         else if(orderStatus=='order-confirmed') {
-            ref=refData.orderBy('createdAt','desc').where('status','in',['Order Accepted','Driver Accepted']);
+            ref=refData.orderBy('createdAt','desc').where('status','in',['restaurantorders Accepted','Driver Accepted']);
         }
         else if(orderStatus=='order-shipped') {
-            ref=refData.orderBy('createdAt','desc').where('status','in',['Order Shipped','In Transit']);
+            ref=refData.orderBy('createdAt','desc').where('status','in',['restaurantorders Shipped','In Transit']);
         }
         else if(orderStatus=='order-completed') {
-            ref=refData.orderBy('createdAt','desc').where('status','==','Order Completed');
+            ref=refData.orderBy('createdAt','desc').where('status','==','restaurantorders Completed');
         }
         else if(orderStatus=='order-canceled') {
-            ref=refData.orderBy('createdAt','desc').where('status','==','Order Rejected');
+            ref=refData.orderBy('createdAt','desc').where('status','==','restaurantorders Rejected');
         }
         else if(orderStatus=='order-failed') {
             ref=refData.orderBy('createdAt','desc').where('status','==','Driver Rejected');
@@ -358,7 +358,7 @@
         console.log('order_status:', order_status);
         console.log('search:', search);
         console.log('refData:', refData);
-        
+
         if(search!='') {
             ref=refData;
             console.log('Setting ref to refData (no ordering) - search present');
@@ -377,26 +377,26 @@
                 .attr("value",data.id)
                 .text(data.name));
         });
-        
+
         // Enable the zone selector after zones are loaded
         $('.zone_selector').prop('disabled', false);
     }).catch(function(error) {
         console.error('Error loading zones for orders:', error);
     });
     $('.status_selector').select2({
-        placeholder: '{{trans("lang.status")}}',  
+        placeholder: '{{trans("lang.status")}}',
         minimumResultsForSearch: Infinity,
-        allowClear: true 
+        allowClear: true
     });
     $('.zone_selector').select2({
-        placeholder: '{{trans("lang.select_zone")}}',  
+        placeholder: '{{trans("lang.select_zone")}}',
         minimumResultsForSearch: Infinity,
-        allowClear: true 
+        allowClear: true
     });
     $('.order_type_selector').select2({
-        placeholder: '{{trans("lang.order_type")}}',  
+        placeholder: '{{trans("lang.order_type")}}',
         minimumResultsForSearch: Infinity,
-        allowClear: true 
+        allowClear: true
     });
     $('select').on("select2:unselecting", function(e) {
         var self = $(this);
@@ -407,10 +407,10 @@
     function setDate() {
         $('#daterange span').html('{{trans("lang.select_range")}}');
         $('#daterange').daterangepicker({
-            autoUpdateInput: false, 
+            autoUpdateInput: false,
         }, function (start, end) {
             $('#daterange span').html(start.format('MMMM D, YYYY') + ' - ' + end.format('MMMM D, YYYY'));
-            $('.filteredRecords').trigger('change'); 
+            $('.filteredRecords').trigger('change');
         });
         $('#daterange').on('apply.daterangepicker', function (ev, picker) {
             $('#daterange span').html(picker.startDate.format('MMMM D, YYYY') + ' - ' + picker.endDate.format('MMMM D, YYYY'));
@@ -418,12 +418,12 @@
         });
         $('#daterange').on('cancel.daterangepicker', function (ev, picker) {
             $('#daterange span').html('{{trans("lang.select_range")}}');
-            $('.filteredRecords').trigger('change'); 
+            $('.filteredRecords').trigger('change');
         });
     }
-    setDate(); 
+    setDate();
     var initialRef=ref;
-    
+
     // Store the original reference for filtering
     console.log('=== INITIAL REF SETUP ===');
     console.log('Initial Ref stored:', initialRef);
@@ -432,17 +432,17 @@
         var zoneValue=$('.zone_selector').val();
         var orderType=$('.order_type_selector').val();
         var daterangepicker = $('#daterange').data('daterangepicker');
-        
+
         // Reset refData to base collection or use current ref
         var refData = initialRef || ref || database.collection('restaurant_orders');
-        
+
         console.log('=== FILTER CHANGE DEBUG ===');
         console.log('Selected Status:', status);
         console.log('Selected Zone:', zoneValue);
-        console.log('Selected Order Type:', orderType);
+        console.log('Selected restaurantorders Type:', orderType);
         console.log('Initial Ref:', initialRef);
         console.log('Current Ref:', ref);
-        
+
         // Apply zone filter - we need to filter by restaurant zoneId since orders don't have zoneId
         if(zoneValue && zoneValue !== '') {
             console.log('Filtering by zone:', zoneValue);
@@ -465,12 +465,12 @@
         }
         if(orderType) {
             refData=(orderType=='takeaway')? refData.where('takeAway','==',true):refData.where('takeAway','==',false);
-            console.log('Applied Order Type Filter:', orderType);
+            console.log('Applied restaurantorders Type Filter:', orderType);
         }
         if ($('#daterange span').html() != '{{trans("lang.select_range")}}' && daterangepicker) {
             var from = moment(daterangepicker.startDate).toDate();
             var to = moment(daterangepicker.endDate).toDate();
-            if (from && to) { 
+            if (from && to) {
                 var fromDate = firebase.firestore.Timestamp.fromDate(new Date(from));
                 refData = refData.where('createdAt', '>=', fromDate);
                 var toDate = firebase.firestore.Timestamp.fromDate(new Date(to));
@@ -489,8 +489,8 @@
         console.log('Vendor ID:', vendor_id);
         console.log('User ID:', userID);
         console.log('Driver ID:', driverID);
-        console.log('Order Status:', orderStatus);
-        
+        console.log('restaurantorders Status:', orderStatus);
+
         // Test if there are any orders in the database at all
         database.collection('restaurant_orders').limit(1).get().then(function(snapshot) {
             console.log('=== DATABASE TEST ===');
@@ -502,7 +502,7 @@
         }).catch(function(error) {
             console.error('Error testing database:', error);
         });
-        
+
         jQuery('#search').hide();
         $(document.body).on('click','.redirecttopage',function() {
             var url=$(this).attr('data-url');
@@ -542,7 +542,7 @@
                 console.log('Current Ref:', ref);
                 console.log('Search Value:', data.search.value);
                 console.log('Start:', data.start, 'Length:', data.length);
-                
+
                 const start=data.start;
                 const length=data.length;
                 const searchValue=data.search.value.toLowerCase();
@@ -568,7 +568,7 @@
                     console.log('Query Snapshot Size:', querySnapshot.size);
                     console.log('Query Snapshot Empty:', querySnapshot.empty);
                     console.log('Query Snapshot Docs:', querySnapshot.docs.length);
-                    
+
                     if(querySnapshot.empty) {
                         $('.order_count').text(0);
                         console.error("No data found in Firestore.");
@@ -586,11 +586,11 @@
                     let records=[];
                     let filteredRecords=[];
                     console.log('Processing', querySnapshot.docs.length, 'documents from Firestore');
-                    
+
                     await Promise.all(querySnapshot.docs.map(async (doc) => {
                         let childData=doc.data();
-                        console.log('Order data:', childData.id, 'zoneId:', childData.zoneId);
-                        
+                        console.log('restaurantorders data:', childData.id, 'zoneId:', childData.zoneId);
+
                         // Check if we need to filter by zone (since orders don't have zoneId)
                         if (window.currentZoneFilter) {
                             // Get restaurant zoneId to check if it matches the selected zone
@@ -608,15 +608,15 @@
                                     console.error('Error fetching restaurant zone:', error);
                                 }
                             }
-                            
+
                             // Skip this order if it doesn't belong to the selected zone
                             if (restaurantZoneId !== window.currentZoneFilter) {
                                 console.log('Skipping order', childData.id, 'from zone', restaurantZoneId, 'not matching', window.currentZoneFilter);
                                 return; // Skip this order
                             }
-                            console.log('Order', childData.id, 'matches zone filter');
+                            console.log('restaurantorders', childData.id, 'matches zone filter');
                         }
-                        
+
                         // Add null checks for vendor data and ensure vendor type is available
                         if(childData.hasOwnProperty('vendor') && childData.vendor && childData.vendor.title) {
                             childData.restaurants = childData.vendor.title;
@@ -638,12 +638,12 @@
                             childData.restaurants = 'N/A'; // Default value if vendor data is missing
                             console.log('Warning: Missing vendor data for order:', doc.id);
                         }
-                        
+
                         childData.driverName='';
                         if(childData.hasOwnProperty('driver')&&childData.driver!=null&&childData.driver!='') {
                             childData.driverName=childData.driver.firstName+' '+childData.driver.lastName;
                         }
-                        
+
                         // Add null checks for author data
                         if(childData.hasOwnProperty('author') && childData.author && childData.author.firstName && childData.author.lastName) {
                             childData.client=childData.author.firstName+' '+childData.author.lastName;
@@ -656,7 +656,7 @@
                         } else {
                             childData.orderType="{{trans('lang.order_delivery')}}";
                         }
-                        
+
                         // --- OPTIMIZED AMOUNT ASSIGNMENT - Use order.toPayAmount if available ---
                         childData.amount = '';
                         try {
@@ -694,8 +694,8 @@
                             console.warn('Error getting order amount for', childData.id, e);
                             childData.amount = await buildHTMLProductstotal(childData);
                         }
-                        
-                        childData.id=doc.id; // Ensure the document ID is included in the data              
+
+                        childData.id=doc.id; // Ensure the document ID is included in the data
                         if(searchValue) {
                             var date='';
                             var time='';
@@ -786,7 +786,7 @@
             "language": {
                 "zeroRecords": "{{trans("lang.no_record_found")}}",
                 "emptyTable": "{{trans("lang.no_record_found")}}",
-                "processing": "" 
+                "processing": ""
             },
             dom: 'lfrtipB',
             buttons: [
@@ -808,7 +808,7 @@
                             action: function (e, dt, button, config) {
                                 exportData(dt, 'pdf',fieldConfig);
                             }
-                        },   
+                        },
                         {
                             extend: 'csvHtml5',
                             text: 'Export CSV',
@@ -823,7 +823,7 @@
                 $(".dataTables_filter").append($(".dt-buttons").detach());
                 $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete','new-password').val('');
                 $('.dataTables_filter label').contents().filter(function() {
-                    return this.nodeType === 3; 
+                    return this.nodeType === 3;
                 }).remove();
             }
         });
@@ -865,7 +865,7 @@
         console.log('Building route for order:', val.id, 'vendorID:', vendorID);
         console.log('Vendor data:', val.vendor);
         console.log('Vendor vType:', val.vendor ? val.vendor.vType : 'undefined');
-        
+
         if(val.hasOwnProperty('vendor') && val.vendor.hasOwnProperty('vType') && val.vendor.vType === 'mart') {
             route_view='{{route("marts.view", ":id")}}';
             console.log('Using MART route for order:', val.id);
@@ -962,17 +962,17 @@
         } else {
             html.push('{{trans("lang.order_delivery")}}');
         }
-        if(val.status=='Order Placed') {
+        if(val.status=='restaurantorders Placed') {
             html.push('<span class="order_placed"><span>'+val.status+'</span></span>');
-        } else if(val.status=='Order Accepted') {
+        } else if(val.status=='restaurantorders Accepted') {
             html.push('<span class="order_accepted"><span>'+val.status+'</span></span>');
-        } else if(val.status=='Order Rejected') {
+        } else if(val.status=='restaurantorders Rejected') {
             html.push('<span class="order_rejected"><span>'+val.status+'</span></span>');
         } else if(val.status=='Driver Pending') {
             html.push('<span class="driver_pending"><span>'+val.status+'</span></span>');
         } else if(val.status=='Driver Rejected') {
             html.push('<span class="driver_rejected"><span>'+val.status+'</span></span>');
-        } else if(val.status=='Order Shipped') {
+        } else if(val.status=='restaurantorders Shipped') {
             html.push('<span class="order_shipped"><span>'+val.status+'</span></span>');
         } else if(val.status=='In Transit') {
             html.push('<span class="in_transit"><span>'+val.status+'</span></span>');
@@ -982,12 +982,12 @@
         }
         var actionHtml='';
         actionHtml+='<span class="action-btn"><a href="'+printRoute+'"><i class="fa fa-print" style="font-size:20px;"></i></a><a href="'+route1+'"><i class="mdi mdi-lead-pencil" title="Edit"></i></a>';
-        
+
         // Add manual driver assignment button for delivery orders without assigned drivers
         if(!val.takeAway && (!val.driver || !val.driver.id)) {
             actionHtml+='<a href="'+route1+'#manual_driver_assignment_section" title="Manual Assign Driver"><i class="fa fa-user-plus" style="color: #28a745;"></i></a>';
         }
-        
+
         if(checkDeletePermission) {
             actionHtml+='<a id="'+val.id+'" class="delete-btn" name="order-delete" href="javascript:void(0)"><i class="mdi mdi-delete"></i></a>';
         }
@@ -998,61 +998,61 @@
     $("#is_active").click(function() {
         $("#orderTable .is_open").prop('checked',$(this).prop('checked'));
     });
-    
+
     // Quick Driver Assignment Modal Functionality
     var currentOrderId = '';
-    
+
     // Enhanced load available drivers for quick assignment
     async function loadQuickDrivers() {
         try {
             // Show loading state
             $('#quick_driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Loading drivers...</option>');
-            
+
             // Call the Cloud Function to get available drivers
             const getDriversFunction = firebase.functions().httpsCallable('getAvailableDriversForOrder');
             const result = await getDriversFunction({
                 orderId: currentOrderId || 'temp',
                 zoneId: null // Get all drivers, can be filtered by zone later
             });
-            
+
             if (result.data.success) {
                 $('#quick_driver_selector').empty();
                 $('#quick_driver_selector').append('<option value="">{{ trans("lang.select_driver") }}</option>');
-                
+
                 result.data.drivers.forEach((driverData) => {
                     var driverName = (driverData.firstName || '') + ' ' + (driverData.lastName || '');
                     var driverPhone = driverData.phoneNumber || '';
                     var walletAmount = driverData.wallet_amount || 0;
                     var isOnline = driverData.isOnline ? '🟢' : '🔴';
                     var displayText = `${isOnline} ${driverName} (${driverPhone}) - ₹${walletAmount}`;
-                    
+
                     $('#quick_driver_selector').append($("<option></option>")
                         .attr("value", driverData.id)
                         .text(displayText));
                 });
-                
+
                 console.log(`✅ Loaded ${result.data.total} available drivers for quick assignment`);
             } else {
                 console.error('Failed to load drivers:', result.data);
                 $('#quick_driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Error loading drivers</option>');
             }
-            
+
         } catch (error) {
             console.error('Error loading available drivers:', error);
             $('#quick_driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Error loading drivers</option>');
-            
+
             // Fallback to direct Firestore query
             try {
                 const snapshots = await database.collection('users').where('role', '==', 'driver').where('isActive', '==', true).get();
                 $('#quick_driver_selector').empty();
                 $('#quick_driver_selector').append('<option value="">{{ trans("lang.select_driver") }}</option>');
-                
+
                 snapshots.docs.forEach((doc) => {
                     var driverData = doc.data();
                     var driverName = (driverData.firstName || '') + ' ' + (driverData.lastName || '');
                     var driverPhone = driverData.phoneNumber || '';
                     var displayText = driverName + ' (' + driverPhone + ')';
-                    
+
                     $('#quick_driver_selector').append($("<option></option>")
                         .attr("value", driverData.id)
                         .text(displayText));
@@ -1062,7 +1062,7 @@
             }
         }
     }
-    
+
     // Handle quick driver assignment
     $('#quick_assign_driver_btn').click(async function() {
         var selectedDriverId = $('#quick_driver_selector').val();
@@ -1070,18 +1070,18 @@
             alert('{{ trans("lang.please_select_driver") }}');
             return;
         }
-        
+
         if (confirm('{{ trans("lang.confirm_assign_driver") }}')) {
             await quickAssignDriverToOrder(currentOrderId, selectedDriverId);
         }
     });
-    
+
     // Enhanced quick assign driver to order using Cloud Function
     async function quickAssignDriverToOrder(orderId, driverId) {
         try {
             // Show loading state
             $('#quick_assign_driver_btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Assigning...');
-            
+
             // Call the Cloud Function for manual assignment
             const manualAssignFunction = firebase.functions().httpsCallable('manualAssignDriverToOrder');
             const result = await manualAssignFunction({
@@ -1090,7 +1090,7 @@
                 assignedBy: '{{ auth()->user()->name ?? "Admin" }}',
                 reason: 'Quick assignment from orders list'
             });
-            
+
             if (result.data.success) {
                 alert('{{ trans("lang.driver_assigned_successfully") }}');
                 $('#quickDriverAssignmentModal').modal('hide');
@@ -1098,32 +1098,32 @@
             } else {
                 alert('Failed to assign driver: ' + (result.data.message || 'Unknown error'));
             }
-            
+
         } catch (error) {
             console.error('Error assigning driver:', error);
-            
+
             // Handle specific error types
             let errorMessage = '{{ trans("lang.error_assigning_driver") }}';
             if (error.code === 'functions/unauthenticated') {
                 errorMessage = 'Authentication required. Please log in again.';
             } else if (error.code === 'functions/not-found') {
-                errorMessage = 'Order or driver not found.';
+                errorMessage = 'restaurantorders or driver not found.';
             } else if (error.code === 'functions/failed-precondition') {
-                errorMessage = error.message || 'Order is not eligible for manual assignment.';
+                errorMessage = error.message || 'restaurantorders is not eligible for manual assignment.';
             } else if (error.code === 'functions/invalid-argument') {
                 errorMessage = error.message || 'Invalid driver selected.';
             }
-            
+
             alert(errorMessage);
         } finally {
             // Reset button state
             $('#quick_assign_driver_btn').prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
         }
     }
-    
+
     // Initialize quick driver assignment
     loadQuickDrivers();
-    
+
     // Test function to check zone data in orders
     window.testOrderZoneData = function() {
         console.log('Testing order zone data...');
@@ -1132,7 +1132,7 @@
             for (const doc of snapshots.docs) {
                 const data = doc.data();
                 let restaurantZoneId = 'N/A';
-                
+
                 if (data.vendor && data.vendor.zoneId) {
                     restaurantZoneId = data.vendor.zoneId;
                 } else if (data.vendorID) {
@@ -1145,12 +1145,12 @@
                         restaurantZoneId = 'Error fetching restaurant';
                     }
                 }
-                
+
                 console.log(`Order: ${data.id}, Order ZoneId: ${data.zoneId}, Restaurant ZoneId: ${restaurantZoneId}`);
             }
         });
     };
-    
+
     // Test function to check if orders exist without filters
     window.testAllOrders = function() {
         console.log('Testing all orders...');
@@ -1162,7 +1162,7 @@
             });
         });
     };
-    
+
     // Handle quick assign button clicks
     $(document).on('click', 'a[href*="#manual_driver_assignment_section"]', function(e) {
         e.preventDefault();
@@ -1181,7 +1181,7 @@
                         const orderDoc = await database.collection('restaurant_orders').doc(dataId).get();
                         if (orderDoc.exists) {
                             const orderData = orderDoc.data();
-                            selectedOrders.push('Order #' + dataId + ' (Status: ' + (orderData.status || 'Unknown') + ')');
+                            selectedOrders.push('restaurantorders #' + dataId + ' (Status: ' + (orderData.status || 'Unknown') + ')');
                         }
                     } catch (error) {
                         console.error('Error getting order info:', error);
@@ -1216,13 +1216,13 @@
             const orderDoc = await database.collection('restaurant_orders').doc(id).get();
             if (orderDoc.exists) {
                 const orderData = orderDoc.data();
-                orderInfo = 'Order #' + id + ' (Status: ' + (orderData.status || 'Unknown') + ')';
+                orderInfo = 'restaurantorders #' + id + ' (Status: ' + (orderData.status || 'Unknown') + ')';
             }
         } catch (error) {
             console.error('Error getting order info:', error);
         }
         database.collection('restaurant_orders').doc(id).delete().then(async function(result) {
-            console.log('✅ Order deleted successfully, now logging activity...');
+            console.log('✅ restaurantorders deleted successfully, now logging activity...');
             try {
                 if (typeof logActivity === 'function') {
                     await logActivity('orders', 'deleted', 'Deleted ' + orderInfo);

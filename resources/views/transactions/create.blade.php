@@ -37,7 +37,7 @@
                   <div class="form-group row width-50">
                     <label class="col-4 control-label">{{trans('lang.drivers_payout_amount')}}</label>
                     <div class="col-7">
-                      <input type="number" class="form-control payout_amount">          
+                      <input type="number" class="form-control payout_amount">
                       <div class="form-text text-muted">
                         {{ trans("lang.drivers_payout_amount_placeholder") }}
                       </div>
@@ -58,7 +58,7 @@
           <a href="{!! route('driversPayouts') !!}" class="btn btn-default"><i class="fa fa-undo"></i>{{trans('lang.cancel')}}</a>
         </div>
         </div>
-      </div>    
+      </div>
  @endsection
 @section('scripts')
 <script>
@@ -67,39 +67,39 @@ async function remainingPrice(driverID){
   var paid_price = 0;
   var total_price = 0;
   var remaining = 0;
-  await database.collection('driver_payouts').where('driverID','==',driverID).get().then( async function(payoutSnapshots){ 
+  await database.collection('driver_payouts').where('driverID','==',driverID).get().then( async function(payoutSnapshots){
        payoutSnapshots.docs.forEach((payout)=>{
           var payoutData = payout.data();
           paid_price = parseFloat(paid_price) + parseFloat(payoutData.amount);
         })
-        await database.collection('restaurant_orders').where('driverID','==',driverID).where("status","in",["Order Completed"]).get().then( async function(orderSnapshots){
+        await database.collection('restaurant_orders').where('driverID','==',driverID).where("status","in",["restaurantorders Completed"]).get().then( async function(orderSnapshots){
             orderSnapshots.docs.forEach((order)=>{
               var orderData = order.data();
-              
+
               // Use new calculatedCharges structure instead of deliveryCharge
               var orderEarnings = 0;
-              
+
               // Add totalCalculatedCharge from calculatedCharges
               if (orderData.calculatedCharges && orderData.calculatedCharges.totalCalculatedCharge != undefined) {
                   orderEarnings += parseFloat(orderData.calculatedCharges.totalCalculatedCharge);
               }
-              
+
               // Add tip_amount
               if (orderData.tip_amount != undefined) {
                   orderEarnings += parseFloat(orderData.tip_amount);
               }
-              
+
               // Add surge_fee if it exists
               if (orderData.surge_fee != undefined) {
                   orderEarnings += parseFloat(orderData.surge_fee);
               }
-              
+
               total_price = total_price + orderEarnings;
             })
              remaining = total_price - paid_price;
-        });   
+        });
    });
-  return remaining; 
+  return remaining;
 }
 $(document).ready(function(){
     $("#data-table_processing").show();

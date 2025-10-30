@@ -332,17 +332,17 @@
         min-width: 80px;
         padding: 6px 10px;
     }
-    
+
     .type-icon-wrapper {
         width: 20px;
         height: 20px;
         margin-right: 6px;
     }
-    
+
     .type-icon {
         font-size: 12px;
     }
-    
+
     .type-label {
         font-size: 10px;
     }
@@ -459,7 +459,7 @@
     }
     $(document).ready(function () {
         console.log('🚀 Document ready - initializing coupons DataTable');
-        
+
         // Test Firebase connection
         console.log('🔥 Testing Firebase connection...');
         database.collection('coupons').limit(1).get().then(function(snapshot) {
@@ -470,7 +470,7 @@
         }).catch(function(error) {
             console.error('❌ Firebase connection failed:', error);
         });
-        
+
         // Test the actual query that will be used
         console.log('🔍 Testing actual query...');
         ref.limit(5).get().then(function(snapshot) {
@@ -481,15 +481,15 @@
         }).catch(function(error) {
             console.error('❌ Actual query failed:', error);
         });
-        
+
         $(document.body).on('click', '.redirecttopage', function () {
             var url = $(this).attr('data-url');
             window.location.href = url;
         });
-        
+
         jQuery("#data-table_processing").show();
         console.log('📊 Initializing DataTable for coupons...');
-        
+
         const table = $('#couponTable').DataTable({
             pageLength: 10, // Number of rows per page
             processing: false, // Show processing indicator
@@ -497,7 +497,7 @@
             responsive: true,
             ajax: function (data, callback, settings) {
                 console.log('🔄 DataTable AJAX request:', data);
-                
+
                 const start = data.start;
                 const length = data.length;
                 const searchValue = data.search.value.toLowerCase();
@@ -506,17 +506,17 @@
                 const orderableColumns =(checkDeletePermission) ? ['','code', 'discount', 'item_value', 'usageLimit', 'isPublic', 'cType','restaurantName','expiresAt','', 'description',''] : ['code', 'discount', 'item_value', 'usageLimit', 'isPublic', 'cType', 'restaurantName', 'expiresAt', '', 'description', '']; // Ensure this matches the actual column names
                 const orderByField = orderableColumns[orderColumnIndex]; // Adjust the index to match your table
                 const selectedCouponType = $('.coupon_type_selector').val(); // Get selected coupon type
-                
+
                 console.log('🔍 Search value:', searchValue);
                 console.log('🎯 Selected coupon type:', selectedCouponType);
-                console.log('📊 Order by field:', orderByField, orderDirection);
-                
+                console.log('📊 restaurantorders by field:', orderByField, orderDirection);
+
                 if (searchValue.length >= 3 || searchValue.length === 0) {
                     $('#data-table_processing').show();
                 }
                 ref.get().then(async function (querySnapshot) {
                     console.log('🔍 Firebase query result:', querySnapshot.size, 'documents found');
-                    
+
                     if (querySnapshot.empty) {
                         $('.coupon_count').text(0);
                         console.log("ℹ️ No coupons found in Firestore.");
@@ -532,7 +532,7 @@
                     let records = [];
                     let filteredRecords = [];
                     console.log('🔄 Processing', querySnapshot.docs.length, 'coupon documents...');
-                    
+
                     await Promise.all(querySnapshot.docs.map(async (doc) => {
                         let childData = doc.data();
                         childData.id = doc.id; // Ensure the document ID is included in the data
@@ -602,10 +602,10 @@
                     $('.coupon_count').text(countText);
                     console.log('📊 Total filtered records:', totalRecords);
                     console.log('📄 Pagination: start=', start, 'length=', length);
-                    
+
                     const paginatedRecords = filteredRecords.slice(start, start + length);
                     console.log('📄 Paginated records to display:', paginatedRecords.length);
-                    
+
                     paginatedRecords.forEach(function (childData) {
                         var route1 = '{{route("coupons.edit", ":id")}}';
                         route1 = route1.replace(':id', childData.id);
@@ -660,7 +660,7 @@
                     });
                     $('#data-table_processing').hide(); // Hide loader
                     console.log('✅ DataTable callback - records:', records.length, 'total:', totalRecords);
-                    
+
                     callback({
                         draw: data.draw,
                         recordsTotal: totalRecords, // Total number of records in Firestore
@@ -672,14 +672,14 @@
                     console.error("❌ Error details:", error.message, error.code);
                     $('.coupon_count').text('Error');
                     $('#data-table_processing').hide(); // Hide loader
-                    
+
                     // Show user-friendly error message
                     if (error.code === 'permission-denied') {
                         console.error("❌ Permission denied - check Firebase security rules");
                     } else if (error.code === 'unavailable') {
                         console.error("❌ Firebase service unavailable");
                     }
-                    
+
                     callback({
                         draw: data.draw,
                         recordsTotal: 0,
@@ -717,37 +717,37 @@
                 table.search('').draw();
             }
         }, 300));
-        
+
         // Add event handler for coupon type filtering
         $('.coupon_type_selector').on('change', function() {
             var selectedType = $(this).val();
             console.log('🎯 Coupon type filter changed to:', selectedType);
-            
+
             // Add visual indicator when filter is active
             if (selectedType && selectedType !== '') {
                 $(this).addClass('filter-active');
             } else {
                 $(this).removeClass('filter-active');
             }
-            
+
             // Trigger table redraw with new filter
             $('#data-table_processing').show();
             table.draw();
         });
-        
+
         // Initialize select2 for coupon type selector
         $('.coupon_type_selector').select2({
             placeholder: '{{trans("lang.coupon_type")}}',
             minimumResultsForSearch: Infinity,
             allowClear: true
         });
-        
+
         // Add error handling for DataTable initialization
         table.on('error.dt', function(e, settings, techNote, message) {
             console.error('❌ DataTable error:', message);
             $('.coupon_count').text('Error');
         });
-        
+
         // Add success callback
         table.on('draw.dt', function() {
             console.log('✅ DataTable draw completed');
@@ -901,7 +901,7 @@
         // Check if coupon has active orders before deletion
         if (couponCode && couponData) {
             const hasActiveOrders = await checkCouponActiveOrders(couponCode, couponData.resturant_id);
-            
+
             if (hasActiveOrders) {
                 alert(`🛡️ Cannot delete coupon "${couponCode}" because it has active orders. Please wait for orders to complete or cancel them first.`);
                 return;

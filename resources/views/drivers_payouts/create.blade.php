@@ -112,28 +112,28 @@
                 var payoutData = payout.data();
                 paid_price = parseFloat(paid_price) + parseFloat(payoutData.amount);
             })
-            await database.collection('restaurant_orders').where('driverID', '==', driverID).where("status", "in", ["Order Completed"]).get().then(async function(orderSnapshots) {
+            await database.collection('restaurant_orders').where('driverID', '==', driverID).where("status", "in", ["restaurantorders Completed"]).get().then(async function(orderSnapshots) {
                 orderSnapshots.docs.forEach((order) => {
                     var orderData = order.data();
-                    
+
                     // Use new calculatedCharges structure instead of deliveryCharge
                     var orderEarnings = 0;
-                    
+
                     // Add totalCalculatedCharge from calculatedCharges
                     if (orderData.calculatedCharges && orderData.calculatedCharges.totalCalculatedCharge != undefined) {
                         orderEarnings += parseFloat(orderData.calculatedCharges.totalCalculatedCharge);
                     }
-                    
+
                     // Add tip_amount
                     if (orderData.tip_amount != undefined) {
                         orderEarnings += parseFloat(orderData.tip_amount);
                     }
-                    
+
                     // Add surge_fee if it exists
                     if (orderData.surge_fee != undefined) {
                         orderEarnings += parseFloat(orderData.surge_fee);
                     }
-                    
+
                     total_price = parseFloat(total_price) + parseFloat(orderEarnings);
                 })
                 remaining = parseFloat(total_price) - parseFloat(paid_price);

@@ -289,7 +289,7 @@
                     var currencyAtRight = false;
                     var decimal_degits = 0;
                     var refCurrency = database.collection('currencies').where('isActive', '==', true);
-                    
+
                     // Promotional pricing system variables
                     var promotionalTotals = null;
                     var promotionalPricingApplied = false;
@@ -304,13 +304,13 @@
                         // Now load order data after currency is loaded
                         ref.get().then(async function (snapshots) {
                             var order = snapshots.docs[0].data();
-                            
+
                             // ========== PROMOTIONAL PRICING SYSTEM START ==========
                             console.log('🚀 ===== PROMOTIONAL PRICING SYSTEM STARTING (PRINT) =====');
-                            console.log('🚀 Order ID:', order.id);
-                            console.log('🚀 Order vendor ID:', order.vendorID);
-                            console.log('🚀 Order products count:', order.products ? order.products.length : 0);
-                            
+                            console.log('🚀 restaurantorders ID:', order.id);
+                            console.log('🚀 restaurantorders vendor ID:', order.vendorID);
+                            console.log('🚀 restaurantorders products count:', order.products ? order.products.length : 0);
+
                             // Calculate promotional totals first
                             if (order.vendorID && order.products) {
                                 try {
@@ -410,7 +410,7 @@
                             }
                             append_procucts_list = document.getElementById('order_products');
                             append_procucts_list.innerHTML = '';
-                            
+
                             // Build product list with promotional pricing
                             var productsListHTML = '';
                             if (order.vendorID && order.products) {
@@ -424,7 +424,7 @@
                             } else {
                                 productsListHTML = buildHTMLProductsList(order.products);
                             }
-                            
+
                             var productstotalHTML = buildHTMLProductstotal(order);
                             if (productsListHTML != '') {
                                 append_procucts_list.innerHTML = productsListHTML;
@@ -434,7 +434,7 @@
                                 orderPaymentMethod = order.payment_method;
                             }
                             $("#order_status option[value='" + order.status + "']").attr("selected", "selected");
-                            if (order.status == "Order Rejected" || order.status == "Driver Rejected") {
+                            if (order.status == "restaurantorders Rejected" || order.status == "Driver Rejected") {
                                 $("#order_status").prop("disabled", true);
                             }
                             var price = 0;
@@ -474,7 +474,7 @@
                                 });
                             }
                             // Debug: Log order data to see delivery charge
-                            console.log('Order data for print:', order);
+                            console.log('restaurantorders data for print:', order);
                             console.log('Delivery charge from order:', order.deliveryCharge);
                             console.log('Tip amount from order:', order.tip_amount);
 
@@ -755,7 +755,7 @@
                         if (products) {
                             console.log('💰 ===== CALCULATING SUBTOTAL WITH PROMOTIONAL SUPPORT (PRINT) =====');
                             console.log('💰 Vendor ID for promotional check:', order.vendorID);
-                            
+
                             // Try to use promotional pricing if vendor ID is available
                             if (order.vendorID && promotionalTotals) {
                                 try {
@@ -815,7 +815,7 @@
 
                         // Debug delivery charge
                         console.log('=== fillPrintOrderSummary Debug ===');
-                        console.log('Order deliveryCharge:', order.deliveryCharge);
+                        console.log('restaurantorders deliveryCharge:', order.deliveryCharge);
                         console.log('Final deliveryCharge:', deliveryCharge);
                         console.log('Base delivery charge:', baseDeliveryCharge);
                         console.log('GST calculation logic:');
@@ -921,7 +921,7 @@
                     // Usage: after fetching order data, call fillPrintOrderSummary(order)
 
                     // ========== PROMOTIONAL PRICING FUNCTIONS ==========
-                    
+
                     // Clean and robust promotional price checking function with proper hierarchy
                     async function getPromotionalPrice(product, vendorID) {
                         try {
@@ -933,49 +933,49 @@
                                 discountPrice: product.discountPrice,
                                 vendorID: vendorID
                             });
-                            
+
                             // HIERARCHY: 1. Promo price, 2. discountPrice (>0), 3. price
                             console.log('🔍 ===== CHECKING PRICE HIERARCHY (PRINT) =====');
-                            
+
                             // Step 1: Check for active promotional prices
                             console.log('🔍 Step 1: Checking for promotional prices...');
                             const promotionQuery = database.collection('promotions')
                                 .where('product_id', '==', product.id)
                                 .where('restaurant_id', '==', vendorID)
                                 .where('isAvailable', '==', true);
-                            
+
                             const promotionSnapshot = await promotionQuery.get();
-                            
+
                             if (!promotionSnapshot.empty) {
                                 console.log('🔍 Found', promotionSnapshot.docs.length, 'promotions, checking time validity...');
-                                
+
                                 const now = firebase.firestore.Timestamp.now();
-                                
+
                                 // Check each promotion for time validity
                                 for (const doc of promotionSnapshot.docs) {
                                     const promotionData = doc.data();
-                                    
+
                                     const startTime = promotionData.start_time;
                                     const endTime = promotionData.end_time;
-                                    
+
                                     // Check if promotion is currently active
                                     const isAfterStart = !startTime || now >= startTime;
                                     const isBeforeEnd = !endTime || now <= endTime;
                                     const isActive = isAfterStart && isBeforeEnd;
-                                    
+
                                     if (isActive) {
                                         console.log('🎯 ===== PROMOTIONAL PRICE FOUND (HIERARCHY 1) (PRINT) =====');
                                         console.log('🎯 Product:', product.name);
-                                        
+
                                         // For promotional price, we need to determine the original price for comparison
                                         // Use hierarchy: discountPrice (>0) or price
-                                        const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0) 
-                                            ? parseFloat(product.discountPrice) 
+                                        const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+                                            ? parseFloat(product.discountPrice)
                                             : parseFloat(product.price);
-                                        
+
                                         console.log('🎯 Original Price (for comparison):', originalPrice);
                                         console.log('🎯 Special Price:', promotionData.special_price);
-                                        
+
                                         return {
                                             price: parseFloat(promotionData.special_price),
                                             isPromotional: true,
@@ -984,19 +984,19 @@
                                         };
                                     }
                                 }
-                                
+
                                 console.log('ℹ️ No active promotions found (time-based filtering)');
                             } else {
                                 console.log('ℹ️ No promotions found for this product');
                             }
-                            
+
                             // Step 2: Check discountPrice (if > 0)
                             console.log('🔍 Step 2: Checking discountPrice...');
                             if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
                                 console.log('🎯 ===== DISCOUNT PRICE FOUND (HIERARCHY 2) (PRINT) =====');
                                 console.log('🎯 Product:', product.name);
                                 console.log('🎯 Using discountPrice:', product.discountPrice);
-                                
+
                                 return {
                                     price: parseFloat(product.discountPrice),
                                     isPromotional: false,
@@ -1004,24 +1004,24 @@
                                     originalPrice: parseFloat(product.discountPrice)
                                 };
                             }
-                            
+
                             // Step 3: Use regular price (fallback)
                             console.log('🔍 Step 3: Using regular price (fallback)...');
                             console.log('ℹ️ ===== USING REGULAR PRICE (HIERARCHY 3) (PRINT) =====');
                             console.log('ℹ️ Product:', product.name);
                             console.log('ℹ️ Using regular price:', product.price);
-                            
+
                             return {
                                 price: parseFloat(product.price),
                                 isPromotional: false,
                                 promotionId: null,
                                 originalPrice: parseFloat(product.price)
                             };
-                            
+
                         } catch (error) {
                             console.error('❌ ===== ERROR IN PROMOTIONAL PRICE CHECK (PRINT) =====');
                             console.error('❌ Error details:', error);
-                            
+
                             // Error fallback: Use hierarchy
                             let errorPrice;
                             if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
@@ -1031,7 +1031,7 @@
                                 errorPrice = parseFloat(product.price);
                                 console.error('❌ Error fallback: Using regular price');
                             }
-                            
+
                             return {
                                 price: errorPrice,
                                 isPromotional: false,
@@ -1047,21 +1047,21 @@
                             console.log('🎯 ===== BUILDING PRODUCT LIST WITH PROMOTIONS (PRINT) =====');
                             console.log('🎯 Products:', snapshotsProducts.length);
                             console.log('🎯 Vendor ID:', vendorID);
-                            
+
                             var html = '';
                             var alldata = [];
                             var number = [];
                             var totalProductPrice = 0;
-                            
+
                             for (const product of snapshotsProducts) {
                                 try {
                                     console.log('🎯 ===== PROCESSING PRODUCT FOR LIST (PRINT) =====');
                                     console.log('🎯 Product:', product.name, 'ID:', product.id);
-                                    
+
                                     // Get promotional price for this product
                                     const priceInfo = await getPromotionalPrice(product, vendorID);
                                     console.log('🎯 Price Info Result:', priceInfo);
-                                    
+
                                     var val = product;
                                     html = html + '<tr data-product-id="' + val.id + '">';
                                     var extra_html = '';
@@ -1105,12 +1105,12 @@
                                         html += '</ul>';
                                         html += '</div>';
                                     }
-                                    
+
                                     // Use promotional price if available, otherwise use original price
                                     var final_price = priceInfo.price;
                                     console.log('🎯 Using final price:', final_price, 'for product:', product.name);
                                     console.log('🎯 Is promotional:', priceInfo.isPromotional);
-                                    
+
                                     price_item = final_price.toFixed(decimal_degits);
                                     totalProductPrice = parseFloat(price_item) * parseInt(val.quantity);
                                     var extras_price = 0;
@@ -1131,7 +1131,7 @@
                                         extras_price_val = currentCurrency + "" + parseFloat(extras_price).toFixed(decimal_degits);
                                         totalProductPrice_val = currentCurrency + "" + parseFloat(totalProductPrice).toFixed(decimal_degits);
                                     }
-                                    
+
                                     // Add promotional badge and styling if this is a promotional item
                                     var promotionalBadge = '';
                                     var rowClass = '';
@@ -1140,11 +1140,11 @@
                                         rowClass = ' promotional-item-row';
                                         console.log('🎯 Adding promotional badge for:', product.name);
                                     }
-                                    
+
                                     html = html + '</div></div></td>';
                                     html = html + '<td>' + price_val + '</td><td>' + val.quantity + '</td><td> + ' + extras_price_val + '</td><td>  ' + totalProductPrice_val + '</td>';
                                     html = html + '</tr>';
-                                    
+
                                     // Update the product name with promotional badge UNDER the name
                                     if (priceInfo.isPromotional) {
                                         html = html.replace(
@@ -1157,7 +1157,7 @@
                                             '<tr data-product-id="' + val.id + '" class="' + rowClass + '">'
                                         );
                                     }
-                                    
+
                                     total_price += parseFloat(totalProductPrice);
                                     total_addon_price += parseFloat(extras_price);
                                     total_item_price += parseFloat(price_item);
@@ -1194,36 +1194,36 @@
                         console.log('💰 ===== CALCULATING PROMOTIONAL TOTALS (PRINT) =====');
                         console.log('💰 Products:', products.length);
                         console.log('💰 Vendor ID:', vendorID);
-                        
+
                         let promotionalSubtotal = 0;
                         let originalSubtotal = 0;
                         let promotionalSavings = 0;
                         let promotionalItems = [];
                         let regularItems = [];
-                        
+
                         for (const product of products) {
                             console.log('💰 ===== CALCULATING PRODUCT TOTAL (PRINT) =====');
                             console.log('💰 Product:', product.name, 'ID:', product.id);
-                            
+
                             const priceInfo = await getPromotionalPrice(product, vendorID);
                             console.log('💰 Price Info Result:', priceInfo);
-                            
+
                             const quantity = parseInt(product.quantity) || 1;
                             // Use discountPrice only if it exists and is greater than 0, otherwise use price
-                            const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0) 
-                                ? parseFloat(product.discountPrice) 
+                            const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+                                ? parseFloat(product.discountPrice)
                                 : parseFloat(product.price);
                             const promotionalPrice = priceInfo.price;
-                            
+
                             if (priceInfo.isPromotional) {
                                 const itemTotal = promotionalPrice * quantity;
                                 const originalTotal = originalPrice * quantity;
                                 const savings = originalTotal - itemTotal;
-                                
+
                                 promotionalSubtotal += itemTotal;
                                 originalSubtotal += originalTotal;
                                 promotionalSavings += savings;
-                                
+
                                 promotionalItems.push({
                                     name: product.name,
                                     originalPrice: originalPrice,
@@ -1233,7 +1233,7 @@
                                     promotionalTotal: itemTotal,
                                     savings: savings
                                 });
-                                
+
                                 console.log('💰 ===== PROMOTIONAL ITEM CALCULATION (PRINT) =====');
                                 console.log('💰 Product:', product.name);
                                 console.log('💰 Original Price:', originalPrice);
@@ -1248,14 +1248,14 @@
                                 const itemTotal = originalPrice * quantity;
                                 promotionalSubtotal += itemTotal;
                                 originalSubtotal += itemTotal;
-                                
+
                                 regularItems.push({
                                     name: product.name,
                                     price: originalPrice,
                                     quantity: quantity,
                                     total: itemTotal
                                 });
-                                
+
                                 console.log('💰 ===== REGULAR ITEM CALCULATION (PRINT) =====');
                                 console.log('💰 Product:', product.name);
                                 console.log('💰 Price:', originalPrice);
@@ -1264,14 +1264,14 @@
                                 console.log('💰 Running Promotional Subtotal:', promotionalSubtotal);
                             }
                         }
-                        
+
                         console.log('💰 ===== FINAL CALCULATION SUMMARY (PRINT) =====');
                         console.log('💰 Original Subtotal:', originalSubtotal);
                         console.log('💰 Promotional Subtotal:', promotionalSubtotal);
                         console.log('💰 Total Promotional Savings:', promotionalSavings);
                         console.log('💰 Promotional Items:', promotionalItems.length);
                         console.log('💰 Regular Items:', regularItems.length);
-                        
+
                         return {
                             promotionalSubtotal: promotionalSubtotal,
                             originalSubtotal: originalSubtotal,

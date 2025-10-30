@@ -16,7 +16,7 @@
                 <li class="breadcrumb-item">{{trans('lang.restaurants_payout_create')}}</li>
             </ol>
         </div>
-    </div> 
+    </div>
     <div class="card-body">
         <div class="error_top"></div>
         <div class="row restaurant_payout_create">
@@ -90,7 +90,7 @@
                 var payoutData = payout.data();
                 paid_price = parseFloat(paid_price) + parseFloat(payoutData.amount);
             })
-            await database.collection('restaurant_orders').where('vendor.id', '==', vendorID).where("status", "in", ["Order Completed"]).get().then(async function (orderSnapshots) {
+            await database.collection('restaurant_orders').where('vendor.id', '==', vendorID).where("status", "in", ["restaurantorders Completed"]).get().then(async function (orderSnapshots) {
                 orderSnapshots.docs.forEach((order) => {
                     var orderData = order.data();
                     var productTotalmain = 0;

@@ -193,7 +193,7 @@
             return 'Column';
         },
         formatOrder: function() {
-            return 'Order';
+            return 'restaurantorders';
         },
         formatSortBy: function() {
             return 'Sort by';
