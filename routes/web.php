@@ -357,7 +357,11 @@ Route::get('usersorders/{type}', [App\Http\Controllers\OrderController::class, '
 
 Route::middleware(['permission:payments,payments'])->group(function () {
     Route::get('/payments', [App\Http\Controllers\AdminPaymentsController::class, 'index'])->name('payments');
+    Route::get('/payments/currency', [App\Http\Controllers\AdminPaymentsController::class, 'getCurrency'])->name('payments.currency');
+    Route::get('/payments/data', [App\Http\Controllers\AdminPaymentsController::class, 'getPaymentsData'])->name('payments.data');
 });
+// Public route for dashboard to access payment summary
+Route::get('/payments/summary', [App\Http\Controllers\AdminPaymentsController::class, 'getPaymentsSummary'])->name('payments.summary');
 Route::middleware(['permission:driver-payments,driver.driverpayments'])->group(function () {
     Route::get('driverpayments', [App\Http\Controllers\AdminPaymentsController::class, 'driverIndex'])->name('driver.driverpayments');
 });

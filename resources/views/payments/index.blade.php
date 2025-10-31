@@ -126,25 +126,24 @@
 @endsection
 @section('scripts')
 <script>
-    var database = firebase.firestore();
-    var offest = 1;
-    var pagesize = 10;
-    var end = null;
-    var endarray = [];
-    var start = null;
-    var user_number = [];
-    var ref = database.collection('vendors').orderBy('title');
-    var append_list = '';
     var currentCurrency = '';
     var currencyAtRight = false;
     var decimal_degits = 0;
-    var refCurrency = database.collection('currencies').where('isActive', '==', true);
-    refCurrency.get().then(async function (snapshots) {
-        var currencyData = snapshots.docs[0].data();
-        currentCurrency = currencyData.symbol;
-        currencyAtRight = currencyData.symbolAtRight;
-        if (currencyData.decimal_degits) {
-            decimal_degits = currencyData.decimal_degits;
+    
+    // Fetch currency settings from Laravel backend
+    $.ajax({
+        url: '{{ route("payments.currency") }}',
+        method: 'GET',
+        async: false,
+        success: function(response) {
+            if (response.success) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+                decimal_degits = response.data.decimal_degits || 0;
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error fetching currency:', error);
         }
     });
     $(document).ready(function () {
@@ -173,141 +172,71 @@
             fileName: "{{trans('lang.payment_plural')}}",
         };
         const table = $('#paymentTable').DataTable({
-            pageLength: 10, // Number of rows per page
-            processing: false, // Show processing indicator
-            serverSide: true, // Enable server-side processing
+            pageLength: 10,
+            processing: false,
+            serverSide: true,
             responsive: true,
-            ajax: async function (data, callback, settings) {
-                const start = data.start;
-                const length = data.length;
+            ajax: function (data, callback, settings) {
                 const searchValue = data.search.value.toLowerCase();
-                const orderColumnIndex = data.order[0].column;
-                const orderDirection = data.order[0].dir;
-                const orderableColumns = ['title', 'totalAmount', 'paidAmount', 'remainingAmount']; // Ensure this matches the actual column names
-                const orderByField = orderableColumns[orderColumnIndex]; // Adjust the index to match your table
                 if (searchValue.length >= 3 || searchValue.length === 0) {
                     $('#data-table_processing').show();
                 }
-                await ref.get().then(async function (querySnapshot) {
-                    if (querySnapshot.empty) {
-                        $('.total_count').text(0);
-                        console.error("No data found in Firestore.");
-                        $('#data-table_processing').hide(); // Hide loader
+                
+                $.ajax({
+                    url: '{{ route("payments.data") }}',
+                    method: 'GET',
+                    data: data,
+                    success: function(response) {
+                        let records = [];
+                        
+                        // Update summary statistics
+                        const summary = response.summary;
+                        $('.total_count').text(summary.rest_count);
+                        $('.rest_count').text(summary.rest_count);
+                        
+                        let total_payments = summary.total_payments;
+                        let total_paid_amounts = summary.total_paid_amounts;
+                        let total_remaining_amounts = summary.total_remaining_amounts;
+                        
+                        if (currencyAtRight) {
+                            total_payments = parseFloat(total_payments).toFixed(decimal_degits) + "" + currentCurrency;
+                            total_paid_amounts = parseFloat(total_paid_amounts).toFixed(decimal_degits) + "" + currentCurrency;
+                            total_remaining_amounts = parseFloat(total_remaining_amounts).toFixed(decimal_degits) + "" + currentCurrency;
+                        } else {
+                            total_payments = currentCurrency + "" + parseFloat(total_payments).toFixed(decimal_degits);
+                            total_paid_amounts = currentCurrency + "" + parseFloat(total_paid_amounts).toFixed(decimal_degits);
+                            total_remaining_amounts = currentCurrency + "" + parseFloat(total_remaining_amounts).toFixed(decimal_degits);
+                        }
+                        
+                        $('.total_payments').text(total_payments);
+                        $('.total_paid_amounts').text(total_paid_amounts);
+                        $('.total_remaining_amounts').text(total_remaining_amounts);
+                        
+                        // Build HTML for each record
+                        response.data.forEach(function(childData) {
+                            var html = buildHTML(childData);
+                            records.push(html);
+                        });
+                        
+                        $('#data-table_processing').hide();
+                        
+                        callback({
+                            draw: data.draw,
+                            recordsTotal: response.recordsTotal,
+                            recordsFiltered: response.recordsFiltered,
+                            data: records
+                        });
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("Error fetching data:", error);
+                        $('#data-table_processing').hide();
                         callback({
                             draw: data.draw,
                             recordsTotal: 0,
                             recordsFiltered: 0,
-                            filteredData: [],
-                            data: [] // No data
+                            data: []
                         });
-                        return;
                     }
-                    let records = [];
-                    let filteredRecords = [];
-                    await Promise.all(querySnapshot.docs.map(async (doc) => {
-                        let childData = doc.data();
-                        var data = await remainingPrice(childData.id);
-                        var total = remaining_val = paid_price_val = 0;
-                        total = data.total;
-                        remaining_val =data.remaining_val;
-                        paid_price_val = data.paid_price_val;
-                        childData.totalAmount = total;
-                        childData.paidAmount = paid_price_val;
-                        childData.remainingAmount = remaining_val;
-                        if (currencyAtRight) {
-                            childData.total = parseFloat(childData.totalAmount).toFixed(decimal_degits) + "" + currentCurrency;
-                            childData.paid = parseFloat(childData.paidAmount).toFixed(decimal_degits) + "" + currentCurrency;
-                            childData.remaining = parseFloat(childData.remainingAmount).toFixed(decimal_degits) + "" + currentCurrency;
-                        } else {
-                            childData.total = currentCurrency + "" + parseFloat(childData.totalAmount).toFixed(decimal_degits);
-                            childData.paid = currentCurrency + "" + parseFloat(childData.paidAmount).toFixed(decimal_degits);
-                            childData.remaining = currentCurrency + "" + parseFloat(childData.remainingAmount).toFixed(decimal_degits);
-                        }
-                        childData.id = doc.id; // Ensure the document ID is included in the data              
-                        if (total != 0) {
-                            if (searchValue) {
-                                if (
-                                    (childData.title && childData.title.toLowerCase().toString().includes(searchValue)) ||
-                                    (total && total.toString().includes(searchValue)) ||
-                                    (remaining_val && remaining_val.toString().includes(searchValue)) ||
-                                    (paid_price_val && paid_price_val.toString().includes(searchValue))
-                                ) {
-                                    filteredRecords.push(childData);
-                                }
-                            } else {
-                                filteredRecords.push(childData);
-                            }
-                        }
-                    }));
-                    filteredRecords.sort((a, b) => {
-                        let aValue = a[orderByField] ? a[orderByField].toString().toLowerCase() : '';
-                        let bValue = b[orderByField] ? b[orderByField].toString().toLowerCase() : '';
-                        if (orderByField === 'totalAmount') {
-                            aValue = a[orderByField] ? parseInt(a[orderByField]) : 0;
-                            bValue = b[orderByField] ? parseInt(b[orderByField]) : 0;
-                        }
-                        if (orderByField === 'paidAmount') {
-                            aValue = a[orderByField] ? parseInt(a[orderByField]) : 0;
-                            bValue = b[orderByField] ? parseInt(b[orderByField]) : 0;
-                        }
-                        if (orderByField === 'remainingAmount') {
-                            aValue = a[orderByField] ? parseInt(a[orderByField]) : 0;
-                            bValue = b[orderByField] ? parseInt(b[orderByField]) : 0;
-                        }
-                        if (orderDirection === 'asc') {
-                            return (aValue > bValue) ? 1 : -1;
-                        } else {
-                            return (aValue < bValue) ? 1 : -1;
-                        }
-                    });
-                    const totalRecords = filteredRecords.length;
-                    $('.total_count').text(totalRecords);
-                    let total_payments = 00;
-                    let total_paid_amounts = 00;
-                    let total_remaining_amounts = 00; 
-                    filteredRecords.forEach((childData) => {
-                        if (childData && Math.abs(childData.totalAmount) != 0) {
-                            total_payments += parseFloat(childData.totalAmount);
-                            total_paid_amounts += parseFloat(childData.paidAmount);
-                            total_remaining_amounts += parseFloat(childData.remainingAmount);
-                        }
-                    });
-                    if (currencyAtRight) {
-                        total_payments = parseFloat(total_payments).toFixed(decimal_degits) + "" + currentCurrency;
-                        total_paid_amounts = parseFloat(total_paid_amounts).toFixed(decimal_degits) + "" + currentCurrency;
-                        total_remaining_amounts = parseFloat(total_remaining_amounts).toFixed(decimal_degits) + "" + currentCurrency;
-                    } else {
-                        total_payments = currentCurrency + "" + parseFloat(total_payments).toFixed(decimal_degits);
-                        total_paid_amounts = currentCurrency + "" + parseFloat(total_paid_amounts).toFixed(decimal_degits);
-                        total_remaining_amounts = currentCurrency + "" + parseFloat(total_remaining_amounts).toFixed(decimal_degits);
-                    }
-                    $('.rest_count').text(totalRecords);
-                    $('.total_payments').text(total_payments);
-                    $('.total_paid_amounts').text(total_paid_amounts);
-                    $('.total_remaining_amounts').text(total_remaining_amounts);
-                    const paginatedRecords = filteredRecords.slice(start, start + length);
-                    await Promise.all(paginatedRecords.map(async (childData) => {
-                        var getData = await buildHTML(childData);
-                        records.push(getData);
-                    }));
-                    $('#data-table_processing').hide(); // Hide loader
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: totalRecords, // Total number of records in Firestore
-                        recordsFiltered: totalRecords, // Number of records after filtering (if any)
-                        filteredData: filteredRecords,
-                        data: records // The actual data to display in the table
-                    });
-                }).catch(function (error) {
-                    console.error("Error fetching data from Firestore:", error);
-                    $('#data-table_processing').hide(); // Hide loader
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: 0,
-                        recordsFiltered: 0,
-                        filteredData: [],
-                        data: [] // No data due to error
-                    });
                 });
             },
             order: [[0, 'asc']],
@@ -386,9 +315,8 @@
             }
         }, 300));
     });
-    async function buildHTML(val) {
+    function buildHTML(val) {
         var html = [];
-        newdate = '';
         var id = val.id;
         var route1 = '{{route("restaurants.view",":id")}}';
         route1 = route1.replace(':id', id);
@@ -399,10 +327,12 @@
         var total = Math.abs(val.totalAmount);
         var remaining_val = Math.abs(val.remainingAmount);
         var paid_price_val = Math.abs(val.paidAmount);
+        
         if (total != 0) {
             var total_class = 'text-green';
             var paid_price_val_class = 'text-red';
             var remaining_val_class = 'text-green';
+            
             if (currencyAtRight) {
                 if (data.total < 0) {
                     total_class = 'text-red';
@@ -444,48 +374,6 @@
             html.push('<span class="' + remaining_val_class + '">' + data.remaining_val + '</span>');
         }
         return html;
-    }
-    async function remainingPrice(vendorID) {
-        var data = {};
-        var paid_price = 0;
-        var total_price = 0;
-        var remaining = 0;
-        var adminCommission = 0;
-        await database.collection('payouts').where('vendorID', '==', vendorID).where('paymentStatus', '==', 'Success').get().then(async function (payoutSnapshots) {
-            payoutSnapshots.docs.forEach((payout) => {
-                var payoutData = payout.data();
-                paid_price = parseFloat(paid_price) + parseFloat(payoutData.amount);
-            });
-            await database.collection('users').where('vendorID', '==', vendorID).get().then(async function (vendorSnapshots) {
-                var vendor = [];
-                var wallet_amount = 0;
-                if (vendorSnapshots.docs.length) {
-                    vendor = vendorSnapshots.docs[0].data();
-                    if (isNaN(vendor.wallet_amount) || vendor.wallet_amount == undefined || vendor.wallet_amount == "") {
-                        wallet_amount = 0;
-                    } else {
-                        wallet_amount = vendor.wallet_amount;
-                    }
-                }
-                var remaining = wallet_amount;
-                total_price = wallet_amount + paid_price;
-                if (Number.isNaN(paid_price)) {
-                    paid_price = 0;
-                }
-                if (Number.isNaN(total_price)) {
-                    total_price = 0;
-                }
-                if (Number.isNaN(remaining)) {
-                    remaining = 0;
-                }
-                data = {
-                    'total': total_price,
-                    'paid_price_val': paid_price,
-                    'remaining_val': remaining,
-                };
-            });
-        });
-        return data;
     }
 </script>
 @endsection
