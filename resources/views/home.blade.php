@@ -345,6 +345,10 @@
                     const earnings = parseFloat(data.earnings || 0).toFixed(2);
                     $("#earnings_count").text(currency + earnings);
 
+                    const adminCommission = parseFloat(data.admin_commission || 0).toFixed(2);
+                    $("#admincommission_count").text(currency + adminCommission);
+
+
                     // Status counts
                     $("#placed_count").text(data.orders_by_status.placed);
                     $("#confirmed_count").text(data.orders_by_status.confirmed);
