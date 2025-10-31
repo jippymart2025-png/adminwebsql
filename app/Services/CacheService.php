@@ -30,7 +30,7 @@ class CacheService
                 'drivers' => User::where('role', '=', 'driver')->count(),
                 'vendors' => Vendor::count(),
                 'earnings' => self::getTotalEarnings(),
-                // 'earnings' => restaurant_orders::sum('toPayAmount'),
+                'admin_commission' => self::getAdminCommission(),
                 'orders_by_status' => [
                     'placed'     => restaurant_orders::where('status', 'order-placed')->count(),
                     'confirmed'  => restaurant_orders::where('status', 'order-confirmed')->count(),
@@ -68,6 +68,31 @@ class CacheService
                 return round((float) $total, 2);
             } catch (\Exception $e) {
                 Log::error('Error calculating total earnings: ' . $e->getMessage());
+                return 0;
+            }
+        });
+    }
+
+    private static function getAdminCommission()
+    {
+        return Cache::remember('admin_commission', 300, function () {
+            try {
+                // ✅ Include only completed/shipped orders
+                $statuses = ['Order Completed', 'Order Shipped'];
+
+                // ✅ Check if the adminCommission column exists
+                if (!Schema::hasColumn('restaurant_orders', 'adminCommission')) {
+                    Log::warning('Column adminCommission not found in restaurant_orders table.');
+                    return 0;
+                }
+
+                // ✅ Sum adminCommission for completed/shipped orders
+                $total = restaurant_orders::whereIn('status', $statuses)
+                    ->sum('adminCommission');
+
+                return round((float) $total, 2);
+            } catch (\Exception $e) {
+                Log::error('Error calculating admin commission: ' . $e->getMessage());
                 return 0;
             }
         });

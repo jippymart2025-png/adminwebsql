@@ -1340,5 +1340,5 @@ use App\Http\Controllers\DashboardController;
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
-Route::post('/dashboard/clear-cache', [DashboardController::class, 'clearCache']);
+Route::any('/dashboard/clear-cache', [DashboardController::class, 'clearCache']);
 Route::get('/dashboard/cache-stats', [DashboardController::class, 'getCacheStats']);
