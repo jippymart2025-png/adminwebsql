@@ -4,20 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Kreait\Firebase\Factory;
-use Illuminate\Support\Facades\Cache;
+use App\Models\User;
+use App\Models\Vendor;
+use App\Models\Driver;
 
 class FirebaseUserController extends Controller
 {
-    protected $firestore;
-
-    public function __construct()
-    {
-        $factory = (new Factory)
-            ->withServiceAccount(base_path(env('FIREBASE_CREDENTIALS')));
-
-        $this->firestore = $factory->createFirestore()->database();
-    }
 
     public function index(Request $request)
     {
@@ -37,67 +29,99 @@ class FirebaseUserController extends Controller
 
         $cacheKey = "firebase_users_v4_role_{$role}_page_{$page}_limit_{$limit}";
 
-        $data = Cache::remember($cacheKey, 30, function () use ($role, $limit, $offset, $page) {
-            $query = $this->firestore
-                ->collection('users')
-                ->where('role', '==', $role)
-                ->orderBy('createdAt', 'DESCENDING');
-
-            // For page-based pagination, we need to fetch all documents up to current page
-            // and then slice the results (Firestore doesn't support offset directly)
-            $totalToFetch = $offset + $limit + 1; // +1 to check if there's more
-            $query = $query->limit($totalToFetch);
-
-            $documents = $query->documents();
-
-            $allUsers = [];
-            $count = 0;
-
-            foreach ($documents as $document) {
-                $allUsers[] = [
-                    'data' => $document->data(),
-                    'id' => $document->id(),
+        $data = (function () use ($role, $limit, $offset) {
+            if ($role === 'vendor') {
+                $base = Vendor::query()->orderByDesc('created_at');
+                $total = $base->count();
+                $rows = $base->skip($offset)->take($limit)->get();
+                $users = $rows->map(function ($row) {
+                    return $this->transformUserData('vendor', [
+                        'id' => $row->id,
+                        'firstName' => $row->first_name ?? ($row->name ?? ''),
+                        'lastName' => $row->last_name ?? '',
+                        'email' => $row->email ?? '',
+                        'phoneNumber' => $row->phone ?? '',
+                        'countryCode' => $row->country_code ?? '',
+                        'createdAt' => $row->created_at,
+                        'active' => (bool) ($row->active ?? $row->status ?? 0),
+                        'zoneId' => $row->zone_id ?? '',
+                        'vendorID' => $row->id,
+                        'vType' => $row->v_type ?? ($row->type ?? ''),
+                        'subscriptionPlanId' => $row->subscription_plan_id ?? null,
+                        'subscriptionExpiryDate' => $row->subscription_expiry_date ?? null,
+                        'isDocumentVerify' => (bool) ($row->is_document_verify ?? 0),
+                        'wallet_amount' => $row->wallet_amount ?? 0,
+                    ], (string) $row->id);
+                })->all();
+                return [
+                    'users' => $users,
+                    'has_more' => ($offset + $limit) < $total,
+                    'next_created_at' => null,
+                    'next_doc_id' => null,
                 ];
-                $count++;
             }
 
-            // Skip to the offset position
-            $users = [];
-            $hasMore = false;
-            $nextCreatedAt = null;
-            $nextDocId = null;
-
-            for ($i = $offset; $i < count($allUsers) && $i < $offset + $limit; $i++) {
-                $docData = $allUsers[$i]['data'];
-                $docId = $allUsers[$i]['id'];
-
-                // Transform data based on role
-                $userData = $this->transformUserData($role, $docData, $docId);
-                $users[] = $userData;
-
-                // Store last document info for next page
-                $nextCreatedAt = $docData['createdAt'] ?? null;
-                $nextDocId = $docId;
+            if ($role === 'driver') {
+                $base = Driver::query()->orderByDesc('created_at');
+                $total = $base->count();
+                $rows = $base->skip($offset)->take($limit)->get();
+                $users = $rows->map(function ($row) {
+                    return $this->transformUserData('driver', [
+                        'id' => $row->id,
+                        'firstName' => $row->first_name ?? ($row->name ?? ''),
+                        'lastName' => $row->last_name ?? '',
+                        'email' => $row->email ?? '',
+                        'phoneNumber' => $row->phone ?? '',
+                        'countryCode' => $row->country_code ?? '',
+                        'createdAt' => $row->created_at,
+                        'active' => (bool) ($row->active ?? $row->status ?? 0),
+                        'isDocumentVerify' => (bool) ($row->is_document_verify ?? 0),
+                        'isActive' => (bool) ($row->is_active ?? $row->active ?? 0),
+                        'fcmToken' => $row->fcm_token ?? null,
+                        'wallet_amount' => $row->wallet_amount ?? 0,
+                        'orderCompleted' => $row->order_completed ?? 0,
+                        'zoneId' => $row->zone_id ?? '',
+                        'inProgressOrderID' => $row->in_progress_order_id ?? null,
+                    ], (string) $row->id);
+                })->all();
+                return [
+                    'users' => $users,
+                    'has_more' => ($offset + $limit) < $total,
+                    'next_created_at' => null,
+                    'next_doc_id' => null,
+                ];
             }
 
-            // Check if there are more results beyond current page
-            $hasMore = count($allUsers) > ($offset + $limit);
-
+            $base = User::query()->where('role', $role)->orderByDesc('created_at');
+            $total = $base->count();
+            $rows = $base->skip($offset)->take($limit)->get();
+            $users = $rows->map(function ($row) {
+                return $this->transformUserData('customer', [
+                    'id' => $row->id,
+                    'firstName' => $row->first_name ?? ($row->name ?? ''),
+                    'lastName' => $row->last_name ?? '',
+                    'email' => $row->email ?? '',
+                    'phoneNumber' => $row->phone ?? '',
+                    'countryCode' => $row->country_code ?? '',
+                    'createdAt' => $row->created_at,
+                    'active' => (bool) ($row->active ?? $row->status ?? 0),
+                    'zoneId' => $row->zone_id ?? '',
+                    'profilePictureURL' => $row->profile_picture_url ?? null,
+                ], (string) $row->id);
+            })->all();
             return [
                 'users' => $users,
-                'has_more' => $hasMore,
-                'next_created_at' => $hasMore ? $nextCreatedAt : null,
-                'next_doc_id' => $hasMore ? $nextDocId : null,
+                'has_more' => ($offset + $limit) < $total,
+                'next_created_at' => null,
+                'next_doc_id' => null,
             ];
-        });
+        })();
 
         // Get detailed statistics (cached separately for performance)
         // Always fetch statistics regardless of page or limit
         $countsCacheKey = "firebase_users_statistics_v2_role_{$role}";
         
-        $statistics = Cache::remember($countsCacheKey, 300, function () use ($role) {
-            return $this->getDetailedStatistics($role);
-        });
+        $statistics = $this->getDetailedStatistics($role);
 
         return response()->json([
             'status' => true,
@@ -124,68 +148,49 @@ class FirebaseUserController extends Controller
      */
     private function getDetailedStatistics(string $role): array
     {
-        $snapshot = $this->firestore
-            ->collection('users')
-            ->where('role', '==', $role)
-            ->documents();
-
-        $total = 0;
-        $active = 0;
-        $inactive = 0;
-        $verified = 0;
-
-        foreach ($snapshot as $doc) {
-            $data = $doc->data();
-            $total++;
-
-            // Count active/inactive
-            $isActive = $data['active'] ?? false;
-            if ($isActive) {
-                $active++;
-            } else {
-                $inactive++;
-            }
-
-            // Count verified (for vendors and drivers)
-            if (in_array($role, ['vendor', 'driver'])) {
-                $isVerified = $data['isDocumentVerify'] ?? false;
-                if ($isVerified) {
-                    $verified++;
-                }
-            }
+        if ($role === 'vendor') {
+            $total = Vendor::count();
+            $active = Vendor::where(function ($q) { $q->where('active', 1)->orWhere('status', 1); })->count();
+            $inactive = max(0, $total - $active);
+            $verified = Vendor::where('is_document_verify', 1)->count();
+            return [
+                'total' => $total,
+                'active' => $active,
+                'inactive' => $inactive,
+                'total_vendors' => $total,
+                'active_vendors' => $active,
+                'inactive_vendors' => $inactive,
+                'verified_vendors' => $verified,
+            ];
         }
 
-        // Build statistics based on role
-        $stats = [
+        if ($role === 'driver') {
+            $total = Driver::count();
+            $active = Driver::where(function ($q) { $q->where('active', 1)->orWhere('is_active', 1)->orWhere('status', 1); })->count();
+            $inactive = max(0, $total - $active);
+            $verified = Driver::where('is_document_verify', 1)->count();
+            return [
+                'total' => $total,
+                'active' => $active,
+                'inactive' => $inactive,
+                'total_drivers' => $total,
+                'active_drivers' => $active,
+                'inactive_drivers' => $inactive,
+                'verified_drivers' => $verified,
+            ];
+        }
+
+        $total = User::where('role', $role)->count();
+        $active = User::where('role', $role)->where(function ($q) { $q->where('active', 1)->orWhere('status', 1); })->count();
+        $inactive = max(0, $total - $active);
+        return [
             'total' => $total,
             'active' => $active,
             'inactive' => $inactive,
+            'total_customers' => $total,
+            'active_customers' => $active,
+            'inactive_customers' => $inactive,
         ];
-
-        // Add role-specific fields
-        switch ($role) {
-            case 'customer':
-                $stats['total_customers'] = $total;
-                $stats['active_customers'] = $active;
-                $stats['inactive_customers'] = $inactive;
-                break;
-
-            case 'vendor':
-                $stats['total_vendors'] = $total;
-                $stats['active_vendors'] = $active;
-                $stats['inactive_vendors'] = $inactive;
-                $stats['verified_vendors'] = $verified;
-                break;
-
-            case 'driver':
-                $stats['total_drivers'] = $total;
-                $stats['active_drivers'] = $active;
-                $stats['inactive_drivers'] = $inactive;
-                $stats['verified_drivers'] = $verified;
-                break;
-        }
-
-        return $stats;
     }
 
     /**

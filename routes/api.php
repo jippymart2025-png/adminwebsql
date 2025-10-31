@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\FirebaseOrderController;
 use App\Http\Controllers\Api\FirebaseLiveTrackingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AppUserController;
 use App\Http\Controllers\Api\FirebaseUserController;
+use App\Http\Controllers\Api\PaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,9 +33,16 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['throttle:5,1'])->group(function () {
     Route::get('/firebase/users', [FirebaseUserController::class, 'index']);
     Route::get('/firebase/orders', [FirebaseOrderController::class, 'index']);
-    
+
     // Live tracking endpoints
     Route::get('/firebase/live-tracking', [FirebaseLiveTrackingController::class, 'index']);
     Route::get('/firebase/drivers/{driverId}/location', [FirebaseLiveTrackingController::class, 'getDriverLocation']);
     Route::post('/firebase/drivers/locations', [FirebaseLiveTrackingController::class, 'batchDriverLocations']);
 });
+
+// SQL users listing (replaces client-side Firebase usage on Users page)
+Route::get('/app-users', [AppUserController::class, 'index']);
+Route::post('/app-users', [AppUserController::class, 'store']);
+Route::delete('/app-users/{id}', [AppUserController::class, 'destroy']);
+Route::patch('/app-users/{id}/active', [AppUserController::class, 'setActive']);
+

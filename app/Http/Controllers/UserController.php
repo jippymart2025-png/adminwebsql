@@ -17,9 +17,9 @@ use PaypalPayoutsSDK\Core\ProductionEnvironment;
 use PaypalPayoutsSDK\Payouts\PayoutsPostRequest;
 use Razorpay\Api\Api;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use Google\Cloud\Firestore\FirestoreClient;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
+use App\Models\AppUser;
 
 class UserController extends Controller
 {
@@ -710,11 +710,6 @@ class UserController extends Controller
         }
 
         $headers = array_map('trim', array_shift($rows));
-        $firestore = new FirestoreClient([
-            'projectId' => config('firestore.project_id'),
-            'keyFilePath' => config('firestore.credentials'),
-        ]);
-        $collection = $firestore->collection('users');
         $imported = 0;
         foreach ($rows as $row) {
             $data = array_combine($headers, $row);
@@ -726,23 +721,22 @@ class UserController extends Controller
                 'lastName' => $data['lastName'],
                 'email' => $data['email'],
                 'password' => Hash::make($data['password']),
-                'zone' => $data['zone'],
-                'active' => strtolower($data['active'] ?? '') === 'true',
+                'zoneId' => $data['zone'] ?? null,
+                'active' => $data['active'] ?? null,
                 'role' => $data['role'] ?? 'customer',
-                'profilePictureURL' => $data['profilePictureURL'] ?? '',
+                'profilePictureURL' => $data['profilePictureURL'] ?? null,
                 'migratedBy' => 'migrate:users',
             ];
-            if (!empty($data['createdAt'])) {
-                try {
-                    $userData['createdAt'] = new \Google\Cloud\Core\Timestamp(Carbon::parse($data['createdAt']));
-                } catch (\Exception $e) {
-                    $userData['createdAt'] = new \Google\Cloud\Core\Timestamp(now());
-                }
-            } else {
-                $userData['createdAt'] = new \Google\Cloud\Core\Timestamp(now());
-            }
-            $docRef = $collection->add($userData);
-            $docRef->set(['id' => $docRef->id()], ['merge' => true]);
+            // createdAt column is text in provided schema; store as string (Y-m-d H:i:s)
+            $userData['createdAt'] = !empty($data['createdAt'])
+                ? (string) Carbon::parse($data['createdAt'])->format('Y-m-d H:i:s')
+                : (string) now()->format('Y-m-d H:i:s');
+
+            // Upsert by email if present, otherwise insert
+            AppUser::updateOrCreate(
+                ['email' => $userData['email']],
+                $userData
+            );
             $imported++;
         }
         if ($imported === 0) {
@@ -755,17 +749,17 @@ class UserController extends Controller
     {
         $filePath = storage_path('app/templates/users_import_template.xlsx');
         $templateDir = dirname($filePath);
-        
+
         // Create template directory if it doesn't exist
         if (!is_dir($templateDir)) {
             mkdir($templateDir, 0755, true);
         }
-        
+
         // Generate template if it doesn't exist
         if (!file_exists($filePath)) {
             $this->generateUsersTemplate($filePath);
         }
-        
+
         return response()->download($filePath, 'users_import_template.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="users_import_template.xlsx"'
@@ -780,7 +774,7 @@ class UserController extends Controller
         try {
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            
+
             // Set headers
             $headers = [
                 'A1' => 'firstName',
@@ -793,12 +787,12 @@ class UserController extends Controller
                 'H1' => 'profilePictureURL',
                 'I1' => 'createdAt'
             ];
-            
+
             foreach ($headers as $cell => $value) {
                 $sheet->setCellValue($cell, $value);
                 $sheet->getStyle($cell)->getFont()->setBold(true);
             }
-            
+
             // Add sample data
             $sampleData = [
                 'John',
@@ -811,18 +805,18 @@ class UserController extends Controller
                 'https://example.com/profile.jpg',
                 date('Y-m-d H:i:s')
             ];
-            
+
             $sheet->fromArray([$sampleData], null, 'A2');
-            
+
             // Auto-size columns
             foreach (range('A', 'I') as $col) {
                 $sheet->getColumnDimension($col)->setAutoSize(true);
             }
-            
+
             // Save the file
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
             $writer->save($filePath);
-            
+
         } catch (\Exception $e) {
             \Log::error('Failed to generate users template: ' . $e->getMessage());
             abort(500, 'Failed to generate template');

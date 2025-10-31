@@ -130,9 +130,8 @@ $(document).ready(function() {
 			allowClear: true
 		});
 	});
-	var database = firebase.firestore();
-	var createdAt = firebase.firestore.FieldValue.serverTimestamp();
-	var photo = "";
+    var apiBase = '{{ url('/api') }}';
+    var photo = "";
 	var fileName=''; 
 	$(".save-form-btn").click(function () {
 		var userFirstName = $(".user_first_name").val();
@@ -175,64 +174,47 @@ $(document).ready(function() {
 		} 
 		 else {
             jQuery("#data-table_processing").show();
-			firebase.auth().createUserWithEmailAndPassword(email, password)
-				.then(function (firebaseUser) {
-					var user_id = firebaseUser.user.uid;
             storeImageData().then(IMG => {
-					database.collection('users').doc(user_id).set({
-                        'appIdentifier':"web",
-						'firstName': userFirstName,
-						'lastName': userLastName, 
-						'email': email,
-						'countryCode': country_code ,
-						'phoneNumber': userPhone,  
-						'profilePictureURL': IMG,
-						'provider' : 'email',
-						'role': 'customer', 
-						'shippingAddress': null,
-						'active': active, 
-						'id': user_id, 
-						'createdAt': createdAt
-					 }).then(async function (result) {
-						console.log('✅ User saved successfully, now logging activity...');
-						try {
-							if (typeof logActivity === 'function') {
-								console.log('🔍 Calling logActivity for user creation...');
-								await logActivity('users', 'created', 'Created new user: ' + userFirstName + ' ' + userLastName);
-								console.log('✅ Activity logging completed successfully');
-							} else {
-								console.error('❌ logActivity function is not available');
-							}
-						} catch (error) {
-							console.error('❌ Error calling logActivity:', error);
-						}
-						jQuery("#data-table_processing").hide();
-						window.location.href = '{{ route("users")}}';
-					});           
-				}).catch(function (error) {
-				jQuery("#data-table_processing").hide();
-                $(".error_top").show();
-                $(".error_top").html("");
-                $(".error_top").append("<p>" + error + "</p>");
-            })
-		}).catch(function (error) {
-					jQuery("#data-table_processing").hide();
-					$(".error_top").show();
-					$(".error_top").html("");
-					$(".error_top").append("<p>" + error + "</p>");
-				});
+                $.ajax({
+                    url: apiBase + '/app-users',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    data: {
+                        firstName: userFirstName,
+                        lastName: userLastName,
+                        email: email,
+                        password: password,
+                        countryCode: country_code,
+                        phoneNumber: userPhone,
+                        active: active ? 'true' : 'false',
+                        role: 'customer',
+                        zoneId: null,
+                        photo: photo || '',
+                        fileName: fileName || ''
+                    }
+                }).done(async function(){
+                    try {
+                        if (typeof logActivity === 'function') {
+                            await logActivity('users', 'created', 'Created new user: ' + userFirstName + ' ' + userLastName);
+                        }
+                    } catch (e){}
+                    jQuery("#data-table_processing").hide();
+                    window.location.href = '{{ route("users")}}';
+                }).fail(function(xhr){
+                    jQuery("#data-table_processing").hide();
+                    $(".error_top").show();
+                    $(".error_top").html("");
+                    var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to create user';
+                    $(".error_top").append("<p>" + msg + "</p>");
+                });
+            });
 		}
 	})
-	var storageRef = firebase.storage().ref('images');
     async function storeImageData() {
         var newPhoto = '';
         try {
 			if(photo!=""){
-            photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-            var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', {contentType: 'image/jpg'});
-            var downloadURL = await uploadTask.ref.getDownloadURL();
-            newPhoto = downloadURL;
-            photo = downloadURL;
+            // keep base64 for server to save
 			}
         } catch (error) {
             console.log("ERR ===", error);

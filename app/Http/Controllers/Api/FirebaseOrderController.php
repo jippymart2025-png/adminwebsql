@@ -4,20 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Kreait\Firebase\Factory;
+use App\Models\restaurant_orders as RestaurantOrder;
 
 class FirebaseOrderController extends Controller
 {
-    protected $firestore;
-
-    public function __construct()
-    {
-        $factory = (new Factory)
-            ->withServiceAccount(base_path(env('FIREBASE_CREDENTIALS')));
-
-        $this->firestore = $factory->createFirestore()->database();
-    }
 
     public function index(Request $request)
     {
@@ -31,119 +21,100 @@ class FirebaseOrderController extends Controller
 
         $cacheKey = "firebase_orders_v5_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any') . "_page_{$page}_limit_{$limit}";
 
-        $data = Cache::remember($cacheKey, 30, function () use ($statusFilter, $vendorID, $limit, $offset, $page) {
-            $query = $this->firestore
-                ->collection('restaurant_orders')
-                ->orderBy('createdAt', 'DESCENDING');
-
-            // Apply filters
+        $data = (function () use ($statusFilter, $vendorID, $limit, $offset) {
+            $base = RestaurantOrder::query()->orderByDesc('created_at');
             if (!empty($statusFilter)) {
-                $query = $query->where('status', '==', $statusFilter);
+                $base->where('status', $statusFilter);
             }
-
             if (!empty($vendorID)) {
-                $query = $query->where('vendorID', '==', $vendorID);
+                $base->where('vendorID', $vendorID)->orWhere('vendor_id', $vendorID);
             }
 
-            // For page-based pagination, fetch all documents up to current page
-            // and then slice the results (Firestore doesn't support offset directly)
-            $totalToFetch = $offset + $limit + 1; // +1 to check if there's more
-            $query = $query->limit($totalToFetch);
-
-            $documents = $query->documents();
-
-            $allOrders = [];
-            $count = 0;
-
-            foreach ($documents as $document) {
-                $allOrders[] = [
-                    'data' => $document->data(),
-                    'id' => $document->id(),
+            $total = $base->count();
+            $rows = $base->skip($offset)->take($limit)->get();
+            $orders = $rows->map(function ($row) {
+                $payload = [
+                    'id' => $row->id,
+                    'products' => [],
+                    'deliveryCharge' => $row->delivery_charge ?? 0,
+                    'discount' => $row->discount ?? 0,
+                    'tip_amount' => $row->tip_amount ?? 0,
+                    'specialDiscount' => ['special_discount' => $row->special_discount ?? 0],
+                    'vendor' => [
+                        'title' => $row->restaurant_name ?? ($row->vendor_name ?? ''),
+                        'photo' => $row->restaurant_photo ?? null,
+                    ],
+                    'vendorID' => $row->vendorID ?? $row->vendor_id ?? null,
+                    'author' => [
+                        'firstName' => $row->customer_first_name ?? '',
+                        'lastName' => $row->customer_last_name ?? '',
+                        'countryCode' => $row->customer_country_code ?? '',
+                        'phoneNumber' => $row->customer_phone ?? '',
+                        'email' => $row->customer_email ?? '',
+                    ],
+                    'authorID' => $row->customer_id ?? null,
+                    'driverID' => $row->driver_id ?? null,
+                    'takeAway' => (bool) ($row->takeaway ?? 0),
+                    'createdAt' => $row->created_at,
+                    'status' => $row->status ?? 'Unknown',
+                    'payment_method' => $row->payment_method ?? '',
+                    'address' => ['locality' => $row->address_locality ?? ''],
                 ];
-                $count++;
-            }
-
-            // Skip to the offset position
-            $orders = [];
-            $hasMore = false;
-            $nextCreatedAt = null;
-            $nextDocId = null;
-
-            for ($i = $offset; $i < count($allOrders) && $i < $offset + $limit; $i++) {
-                $rawData = $allOrders[$i]['data'];
-                $docId = $allOrders[$i]['id'];
-
-                // Transform to include only necessary fields
-                $orderData = $this->transformOrderData($rawData, $docId);
-                $orders[] = $orderData;
-
-                // Store last document info for next page
-                $nextCreatedAt = $rawData['createdAt'] ?? null;
-                $nextDocId = $docId;
-            }
-
-            // Check if there are more results beyond current page
-            $hasMore = count($allOrders) > ($offset + $limit);
+                return $this->transformOrderData($payload, (string) $row->id);
+            })->all();
 
             return [
                 'orders' => $orders,
-                'has_more' => $hasMore,
-                'next_created_at' => $hasMore ? $nextCreatedAt : null,
-                'next_doc_id' => $hasMore ? $nextDocId : null,
+                'has_more' => ($offset + $limit) < $total,
+                'next_created_at' => null,
+                'next_doc_id' => null,
             ];
-        });
+        })();
 
         // Get total count and status breakdown (cached)
         $totalCount = null;
         $countersCacheKey = "firebase_orders_counts_v4_status_" . ($statusFilter ?: 'any') . "_vendor_" . ($vendorID ?: 'any');
 
         // Always try to get counters from cache first
-        $counters = Cache::get($countersCacheKey);
+        $counters = null;
+        if ($page === 1 || $request->query('with_total') === '1') {
+            $base = RestaurantOrder::query();
+            if (!empty($statusFilter)) {
+                $base->where('status', $statusFilter);
+            }
+            if (!empty($vendorID)) {
+                $base->where('vendorID', $vendorID)->orWhere('vendor_id', $vendorID);
+            }
 
-        // If not in cache AND (page 1 OR with_total requested), calculate it
-        if ($counters === null && ($page === 1 || $request->query('with_total') === '1')) {
-            $counters = Cache::remember($countersCacheKey, 300, function () use ($statusFilter, $vendorID) {
-                $base = $this->firestore->collection('restaurant_orders');
+            $total = (int) $base->count();
+            $statusCounts = RestaurantOrder::selectRaw('LOWER(TRIM(status)) as s, COUNT(*) as c')
+                ->when(!empty($vendorID), function ($q) use ($vendorID) {
+                    $q->where(function ($qq) use ($vendorID) { $qq->where('vendorID', $vendorID)->orWhere('vendor_id', $vendorID); });
+                })
+                ->groupBy('s')
+                ->pluck('c', 's');
 
-                if (!empty($statusFilter)) {
-                    $base = $base->where('status', '==', $statusFilter);
-                }
-                if (!empty($vendorID)) {
-                    $base = $base->where('vendorID', '==', $vendorID);
-                }
+            $activeOrders = 0;
+            foreach (['order placed','order accepted','order shipped','in transit','driver pending'] as $k) {
+                $activeOrders += (int) ($statusCounts[$k] ?? 0);
+            }
+            $completed = (int) ($statusCounts['order completed'] ?? 0);
+            $pending = 0;
+            foreach (['order placed','driver pending','in transit'] as $k) {
+                $pending += (int) ($statusCounts[$k] ?? 0);
+            }
+            $cancelled = 0;
+            foreach (['order rejected','driver rejected','order cancelled','cancelled'] as $k) {
+                $cancelled += (int) ($statusCounts[$k] ?? 0);
+            }
 
-                $total = 0;
-                $activeOrders = 0;
-                $completed = 0;
-                $pending = 0;
-                $cancelled = 0;
-
-                foreach ($base->select(['__name__', 'status'])->documents() as $doc) {
-                    $total++;
-                    $status = strtolower(trim((string) ($doc->data()['status'] ?? '')));
-
-                    if (in_array($status, ['order placed', 'order accepted', 'order shipped', 'in transit', 'driver pending'])) {
-                        $activeOrders++;
-                    }
-                    if ($status === 'order completed') {
-                        $completed++;
-                    }
-                    if (in_array($status, ['order placed', 'driver pending', 'in transit'])) {
-                        $pending++;
-                    }
-                    if (in_array($status, ['order rejected', 'driver rejected', 'order cancelled', 'cancelled'])) {
-                        $cancelled++;
-                    }
-                }
-
-                return [
-                    'total' => $total,
-                    'active_orders' => $activeOrders,
-                    'completed' => $completed,
-                    'pending' => $pending,
-                    'cancelled' => $cancelled,
-                ];
-            });
+            $counters = [
+                'total' => $total,
+                'active_orders' => $activeOrders,
+                'completed' => $completed,
+                'pending' => $pending,
+                'cancelled' => $cancelled,
+            ];
         }
 
         // Set total count if counters are available

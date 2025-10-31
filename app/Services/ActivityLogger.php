@@ -2,47 +2,13 @@
 
 namespace App\Services;
 
-use Google\Cloud\Firestore\FirestoreClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Models\ActivityLog;
 
 class ActivityLogger
 {
-    protected $firestore;
     protected $collection = 'activity_logs';
-
-    private static $firestoreInstance = null;
-    
-    public function __construct()
-    {
-        // Use singleton pattern to prevent multiple connections
-        if (self::$firestoreInstance === null) {
-            try {
-                // Check if service account file exists
-                $keyFilePath = config('firestore.credentials');
-                if (!file_exists($keyFilePath)) {
-                    \Log::warning('Firebase service account file not found: ' . $keyFilePath);
-                    $this->firestore = null;
-                    return;
-                }
-                
-                self::$firestoreInstance = new FirestoreClient([
-                    'projectId' => config('firestore.project_id'),
-                    'keyFilePath' => $keyFilePath,
-                    'databaseId' => config('firestore.database_id'),
-                    'timeout' => config('firestore.timeout', 15),
-                    'maxConnections' => config('firestore.max_connections', 5),
-                ]);
-                
-                $this->collection = config('firestore.collection', 'activity_logs');
-            } catch (\Exception $e) {
-                \Log::error('Failed to initialize ActivityLogger: ' . $e->getMessage());
-                self::$firestoreInstance = null;
-            }
-        }
-        
-        $this->firestore = self::$firestoreInstance;
-    }
 
     /**
      * Log an activity to Firestore
@@ -57,12 +23,6 @@ class ActivityLogger
     public function log($user, $module, $action, $description, Request $request = null)
     {
         try {
-            // Check if Firestore is available
-            if (!$this->firestore) {
-                \Log::warning('ActivityLogger: Firestore not available, skipping log');
-                return false;
-            }
-            
             // Get user information
             $userType = $this->getUserType($user);
             $role = $this->getUserRole($user);
@@ -71,22 +31,22 @@ class ActivityLogger
             $ipAddress = $request ? $request->ip() : request()->ip();
             $userAgent = $request ? $request->userAgent() : request()->userAgent();
 
-            // Prepare log data
-            $logData = [
-                'user_id' => $user->id ?? $user->uid ?? 'unknown',
-                'user_name' => $this->getUserName($user),
-                'user_type' => $userType,
-                'role' => $role,
-                'module' => $module,
-                'action' => $action,
-                'description' => $description,
+            ActivityLog::create([
+                'admin_user_id' => $user->id ?? null,
+                'action' => (string) $module . ':' . (string) $action,
                 'ip_address' => $ipAddress,
                 'user_agent' => $userAgent,
-                'created_at' => new \Google\Cloud\Core\Timestamp(new \DateTime())
-            ];
-
-            // Add to Firestore
-            $this->firestore->collection($this->collection)->add($logData);
+                'context' => [
+                    'user_name' => $this->getUserName($user),
+                    'user_type' => $userType,
+                    'role' => $role,
+                    'module' => $module,
+                    'action' => $action,
+                    'description' => $description,
+                ],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
             return true;
         } catch (\Exception $e) {
@@ -197,26 +157,27 @@ class ActivityLogger
     public function getLogsByModule($module, $limit = 100)
     {
         try {
-            if (!$this->firestore) {
-                \Log::warning('ActivityLogger: Firestore not available, cannot fetch logs');
-                return [];
-            }
-            
-            $query = $this->firestore->collection($this->collection)
-                ->where('module', '=', $module)
-                ->orderBy('created_at', 'desc')
-                ->limit($limit);
+            $rows = ActivityLog::query()
+                ->where('context->module', $module)
+                ->orderByDesc('created_at')
+                ->limit($limit)
+                ->get();
 
-            $documents = $query->documents();
-            $logs = [];
-
-            foreach ($documents as $document) {
-                $data = $document->data();
-                $data['id'] = $document->id();
-                $logs[] = $data;
-            }
-
-            return $logs;
+            return $rows->map(function ($row) {
+                return [
+                    'id' => $row->id,
+                    'user_id' => $row->admin_user_id,
+                    'user_name' => $row->context['user_name'] ?? null,
+                    'user_type' => $row->context['user_type'] ?? null,
+                    'role' => $row->context['role'] ?? null,
+                    'module' => $row->context['module'] ?? null,
+                    'action' => $row->context['action'] ?? null,
+                    'description' => $row->context['description'] ?? null,
+                    'ip_address' => $row->ip_address,
+                    'user_agent' => $row->user_agent,
+                    'created_at' => $row->created_at,
+                ];
+            })->all();
         } catch (\Exception $e) {
             \Log::error('Error fetching activity logs: ' . $e->getMessage());
             return [];
@@ -233,29 +194,29 @@ class ActivityLogger
     public function getAllLogs($limit = 50, $startAfter = null)
     {
         try {
-            if (!$this->firestore) {
-                \Log::warning('ActivityLogger: Firestore not available, cannot fetch logs');
-                return [];
-            }
-            
-            $query = $this->firestore->collection($this->collection)
-                ->orderBy('created_at', 'desc')
-                ->limit($limit);
+            $rows = ActivityLog::query()
+                ->when($startAfter, function ($q) use ($startAfter) {
+                    return $q->where('id', '<', (int) $startAfter);
+                })
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get();
 
-            if ($startAfter) {
-                $query = $query->startAfter($startAfter);
-            }
-
-            $documents = $query->documents();
-            $logs = [];
-
-            foreach ($documents as $document) {
-                $data = $document->data();
-                $data['id'] = $document->id();
-                $logs[] = $data;
-            }
-
-            return $logs;
+            return $rows->map(function ($row) {
+                return [
+                    'id' => $row->id,
+                    'user_id' => $row->admin_user_id,
+                    'user_name' => $row->context['user_name'] ?? null,
+                    'user_type' => $row->context['user_type'] ?? null,
+                    'role' => $row->context['role'] ?? null,
+                    'module' => $row->context['module'] ?? null,
+                    'action' => $row->context['action'] ?? null,
+                    'description' => $row->context['description'] ?? null,
+                    'ip_address' => $row->ip_address,
+                    'user_agent' => $row->user_agent,
+                    'created_at' => $row->created_at,
+                ];
+            })->all();
         } catch (\Exception $e) {
             \Log::error('Error fetching all activity logs: ' . $e->getMessage());
             return [];

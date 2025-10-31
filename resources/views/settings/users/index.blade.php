@@ -161,8 +161,8 @@
 @endsection
 @section('scripts')
     <script type="text/javascript">
-        var database = firebase.firestore();
-        var ref = database.collection('users').where("role", "in", ["customer"]);
+        // SQL mode: fetch via API instead of Firebase
+        var apiBase = '{{ url('/api') }}';
         var placeholderImage = '';
         var user_permissions = '<?php echo @session("user_permissions") ?>';
         user_permissions = Object.values(JSON.parse(user_permissions));
@@ -172,28 +172,13 @@
         }
         var zoneIdToName = {};
         var zonesLoaded = false;
- 
-        // Load zones first - returns a promise
-        var loadZonesPromise = database.collection('zone').where('publish', '==', true).orderBy('name', 'asc').get().then(async function (snapshots) {
-            console.log('✅ Loading zones:', snapshots.docs.length);
-            snapshots.docs.forEach((listval) => {
-                var data = listval.data();
-                zoneIdToName[data.id] = data.name;
-                console.log('📍 Zone loaded:', data.name, '| ID:', data.id);
-                $('.zone_selector').append($("<option></option>")
-                    .attr("value", data.id)
-                    .text(data.name));
-            });
 
-            // Enable the zone selector after zones are loaded
-            $('.zone_selector').prop('disabled', false);
+        // Load zones first - returns a promise
+        var loadZonesPromise = new Promise(function(resolve){
+            // If you store zones in SQL too, replace this inline with an API call.
+            // For now leave empty map to avoid blocking UI.
             zonesLoaded = true;
-            console.log('✅ All zones loaded. Total zones:', Object.keys(zoneIdToName).length);
-            return zoneIdToName;
-        }).catch(function (error) {
-            console.error('❌ Error loading zones:', error);
-            zonesLoaded = true; // Set to true even on error to prevent hanging
-            return {};
+            resolve(zoneIdToName);
         });
 
         // Initialize select2 for all selectors
@@ -226,29 +211,18 @@
             console.log('- Status Value:', status);
             console.log('- Zone Value:', zoneValue);
 
-            // Reset ref to base collection
-            ref = database.collection('users').where("role", "in", ["customer"]);
+            // No-op; filters are sent to server via DataTables ajax
 
             // Note: Zone filter is NOT applied in Firestore query
             // It will be applied client-side because zoneId is nested in shippingAddress
 
             // Apply date filter
             if ($('#daterange span').html() != '{{trans("lang.select_range")}}' && daterangepicker) {
-                var from = moment(daterangepicker.startDate).toDate();
-                var to = moment(daterangepicker.endDate).toDate();
-                if (from && to) {
-                    var fromDate = firebase.firestore.Timestamp.fromDate(new Date(from));
-                    ref = ref.where('createdAt', '>=', fromDate);
-                    var toDate = firebase.firestore.Timestamp.fromDate(new Date(to));
-                    ref = ref.where('createdAt', '<=', toDate);
-                }
+                // handled server-side
             }
 
             // Apply status filter
-            if (status) {
-                console.log('Applying status filter:', status);
-                ref = (status == "active") ? ref.where('active', '==', true) : ref.where('active', '==', false);
-            }
+            // handled server-side
 
             // Reload the table with new filters
             $('#userTable').DataTable().ajax.reload();
@@ -294,11 +268,11 @@
                     $('.dt-button-background').hide();
                 }
             });
-            
+
             // Wait for zones to load before initializing DataTable
             loadZonesPromise.then(function() {
                 console.log('🚀 Zones loaded, initializing DataTable with zone mapping:', zoneIdToName);
-                
+
                 var fieldConfig = {
                     columns: [
                         {key: 'fullName', header: "{{trans('lang.user_info')}}"},
@@ -311,287 +285,155 @@
                     fileName: "{{trans('lang.user_table')}}",
                 };
                 const table = $('#userTable').DataTable({
-                pageLength: 10,
-                processing: false, // Show processing indicator
-                serverSide: true, // Enable server-side processing
-                responsive: true,
-                ajax: function (data, callback, settings) {
-                    const start = data.start;
-                    const length = data.length;
-                    const searchValue = data.search.value.toLowerCase();
-                    const orderColumnIndex = data.order[0].column;
-                    const orderDirection = data.order[0].dir;
-                    const orderableColumns = (checkDeletePermission) ? ['', 'fullName', 'email', 'phoneNumber', 'zone', 'createdAt', '', '', ''] : ['fullName', 'email', 'phoneNumber', 'zone', 'createdAt', '', '', ''];
-                    const orderByField = orderableColumns[orderColumnIndex]; // Adjust the index to match your table
-                    if (searchValue.length >= 3 || searchValue.length === 0) {
+                    pageLength: 10,
+                    processing: false, // Show processing indicator
+                    serverSide: true, // Enable server-side processing
+                    responsive: true,
+                    ajax: function (data, callback, settings) {
+                        const start = data.start;
+                        const length = data.length;
+                        const searchValue = data.search.value.toLowerCase();
+                        const status = $('.status_selector').val();
+                        const zoneValue = $('.zone_selector').val();
+                        const daterangepicker = $('#daterange').data('daterangepicker');
+                        let from = '', to = '';
+                        if ($('#daterange span').html() != '{{trans("lang.select_range")}}' && daterangepicker) {
+                            from = daterangepicker.startDate.format('YYYY-MM-DD HH:mm:ss');
+                            to = daterangepicker.endDate.format('YYYY-MM-DD HH:mm:ss');
+                        }
                         $('#data-table_processing').show();
-                    }
-                    ref.orderBy('createdAt', 'desc').get().then(async function (querySnapshot) {
-                        if (querySnapshot.empty) {
-                            $('.total_count').text(0);
-                            console.error("No data found in Firestore.");
-                            $('#data-table_processing').hide(); // Hide loader
+                        $.ajax({
+                            url: apiBase + '/app-users',
+                            method: 'GET',
+                            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                            data: {
+                                page: Math.floor(start / length) + 1,
+                                limit: length,
+                                search: searchValue,
+                                status: status,
+                                zoneId: zoneValue,
+                                from: from,
+                                to: to,
+                                role: 'customer'
+                            }
+                        }).done(function (resp) {
+                            const items = resp.data || [];
+                            const total = (resp.meta && resp.meta.total) ? resp.meta.total : items.length;
+                            $('.total_count').text(total);
+                            let records = [];
+                            items.forEach(function (childData) {
+                                var id = childData.id;
+                                var route1 = '{{route("users.edit",":id")}}'.replace(':id', id);
+                                var user_view = '{{route("users.view",":id")}}'.replace(':id', id);
+                                var vendorImage = childData.profilePictureURL == '' || childData.profilePictureURL == null ? '<img alt="" width="100%" style="width:70px;height:70px;" src="' + placeholderImage + '" alt="image">' : '<img onerror="this.onerror=null;this.src=\'' + placeholderImage + '\'" alt="" width="100%" style="width:70px;height:70px;" src="' + childData.profilePictureURL + '" alt="image">'
+                                var zoneName = zoneIdToName[childData.zoneId] || ' ';
+                                var createdAt = childData.createdAt || '';
+                                records.push([
+                                    checkDeletePermission ? '<td class="delete-all"><input type="checkbox" id="is_open_' + id + '" class="is_open" dataId="' + id + '"><label class="col-3 control-label" for="is_open_' + id + '" ></label></td>' : '',
+                                    vendorImage + '<a href="' + user_view + '" class="redirecttopage">' + (childData.fullName || '') + '</a>',
+                                    childData.email ? childData.email : ' ',
+                                    childData.phoneNumber ? childData.phoneNumber : ' ',
+                                    zoneName,
+                                    createdAt,
+                                    childData.active ? '<label class="switch"><input type="checkbox" checked id="' + id + '" name="isActive"><span class="slider round"></span></label>' : '<label class="switch"><input type="checkbox" id="' + id + '" name="isActive"><span class="slider round"></span></label>',
+                                    '<span class="action-btn"><a href="' + user_view + '"><i class="mdi mdi-eye"></i></a><a href="' + route1 + '"><i class="mdi mdi-lead-pencil" title="Edit"></i></a><?php if (in_array('user.delete', json_decode(@session('user_permissions'), true))){ ?> <a id="' + id + '" class="delete-btn" name="user-delete" href="javascript:void(0)"><i class="mdi mdi-delete"></i></a></td><?php } ?></span>'
+                                ]);
+                            });
+                            $('#data-table_processing').hide();
+                            callback({
+                                draw: data.draw,
+                                recordsTotal: total,
+                                recordsFiltered: total,
+                                filteredData: items,
+                                data: records
+                            });
+                        }).fail(function () {
+                            $('#data-table_processing').hide();
                             callback({
                                 draw: data.draw,
                                 recordsTotal: 0,
                                 recordsFiltered: 0,
                                 filteredData: [],
-                                data: [] // No data
+                                data: []
                             });
-                            return;
-                        }
-                        let records = [];
-                        let filteredRecords = [];
-                        
-                        // Get current zone filter value for client-side filtering
-                        var currentZoneFilter = $('.zone_selector').val();
-                        if (currentZoneFilter && currentZoneFilter !== '') {
-                            console.log('🔍 Applying client-side zone filter:', currentZoneFilter, '| Zone Name:', zoneIdToName[currentZoneFilter]);
-                        }
-                        
-                        querySnapshot.forEach(function (doc) {
-                            let childData = doc.data();
-                            childData.id = doc.id;
-                            childData.fullName = childData.firstName + ' ' + childData.lastName || " "
-                            
-                            // CLIENT-SIDE ZONE FILTERING - Extract zoneId from nested location
-                            var userZoneId = null;
-                            
-                            // Check Priority 1: Root level zoneId
-                            if (childData.zoneId) {
-                                userZoneId = childData.zoneId;
-                            } 
-                            // Check Priority 2: shippingAddress[0].zoneId
-                            else if (childData.shippingAddress && 
-                                     childData.shippingAddress.length > 0 && 
-                                     childData.shippingAddress[0] && 
-                                     childData.shippingAddress[0].zoneId) {
-                                userZoneId = childData.shippingAddress[0].zoneId;
-                            }
-                            // Check Priority 3: shippingAddress[0].location.zoneId (your structure)
-                            else if (childData.shippingAddress && 
-                                     childData.shippingAddress.length > 0 && 
-                                     childData.shippingAddress[0] && 
-                                     childData.shippingAddress[0].location && 
-                                     childData.shippingAddress[0].location.zoneId) {
-                                userZoneId = childData.shippingAddress[0].location.zoneId;
-                            }
-                            
-                            // Apply client-side zone filter
-                            if (currentZoneFilter && currentZoneFilter !== '') {
-                                if (userZoneId !== currentZoneFilter) {
-                                    // Skip this user - doesn't match zone filter
-                                    console.log('❌ Skipping:', childData.fullName, '| User Zone:', userZoneId, '| Filter:', currentZoneFilter);
-                                    return;
-                                } else {
-                                    // User matches zone filter
-                                    console.log('✅ Matched:', childData.fullName, '| Zone:', userZoneId);
-                                }
-                            }
-                            
-                            var date = '';
-                            var time = '';
-                            childData.email = shortEmail(childData.email);
-                            if (childData.hasOwnProperty("createdAt")) {
-                                try {
-                                    date = childData.createdAt.toDate().toDateString();
-                                    time = childData.createdAt.toDate().toLocaleTimeString('en-US');
-                                } catch (err) {
-                                }
-                            }
-                            var createdAt = date + ' ' + time;
-                            
-                            // Apply search filter
-                            if (searchValue) {
-                                if (
-                                    (childData.fullName && childData.fullName.toString().toLowerCase().includes(searchValue)) ||
-                                    (createdAt && createdAt.toString().toLowerCase().indexOf(searchValue) > -1) || (childData.email && childData.email.toString().includes(searchValue))
-                                ) {
-                                    filteredRecords.push(childData);
-                                }
-                            } else {
-                                filteredRecords.push(childData);
-                            }
                         });
-                        filteredRecords.sort((a, b) => {
-                            let aValue = a[orderByField] ? a[orderByField].toString().toLowerCase() : '';
-                            let bValue = b[orderByField] ? b[orderByField].toString().toLowerCase() : '';
-                            if (orderByField === 'createdAt') {
-                                aValue = a[orderByField] ? new Date(a[orderByField].toDate()).getTime() : 0;
-                                bValue = b[orderByField] ? new Date(b[orderByField].toDate()).getTime() : 0;
-                            }
-                            if (orderDirection === 'asc') {
-                                return (aValue > bValue) ? 1 : -1;
-                            } else {
-                                return (aValue < bValue) ? 1 : -1;
-                            }
-                        });
-                        const totalRecords = filteredRecords.length;
-                        $('.total_count').text(totalRecords);
-                        const paginatedRecords = filteredRecords.slice(start, start + length);
-                        paginatedRecords.forEach(function (childData) {
-                            var id = childData.id;
-                            var route1 = '{{route("users.edit",":id")}}';
-                            route1 = route1.replace(':id', id);
-                            var user_view = '{{route("users.view",":id")}}';
-                            user_view = user_view.replace(':id', id);
-                            var trroute1 = '{{route("users.walletstransaction",":id")}}';
-                            trroute1 = trroute1.replace(':id', id);
-                            var date = '';
-                            var time = '';
-                            if (childData.hasOwnProperty("createdAt")) {
-                                try {
-                                    date = childData.createdAt.toDate().toDateString();
-                                    time = childData.createdAt.toDate().toLocaleTimeString('en-US');
-                                } catch (err) {
-                                }
-                            }
-                            var vendorImage = childData.profilePictureURL == '' || childData.profilePictureURL == null ? '<img alt="" width="100%" style="width:70px;height:70px;" src="' + placeholderImage + '" alt="image">' : '<img onerror="this.onerror=null;this.src=\'' + placeholderImage + '\'" alt="" width="100%" style="width:70px;height:70px;" src="' + childData.profilePictureURL + '" alt="image">'
-                            
-                            // Get zoneId from multiple possible locations
-                            var userZoneId = null;
-                            
-                            // Priority 1: Check root level zoneId (recommended structure, same as restaurants)
-                            if (childData.zoneId) {
-                                userZoneId = childData.zoneId;
-                            } 
-                            // Priority 2: Check shippingAddress[0].zoneId
-                            else if (childData.shippingAddress && 
-                                     childData.shippingAddress.length > 0 && 
-                                     childData.shippingAddress[0] && 
-                                     childData.shippingAddress[0].zoneId) {
-                                userZoneId = childData.shippingAddress[0].zoneId;
-                            }
-                            // Priority 3: Check shippingAddress[0].location.zoneId (deeper nested)
-                            else if (childData.shippingAddress && 
-                                     childData.shippingAddress.length > 0 && 
-                                     childData.shippingAddress[0] && 
-                                     childData.shippingAddress[0].location && 
-                                     childData.shippingAddress[0].location.zoneId) {
-                                userZoneId = childData.shippingAddress[0].location.zoneId;
-                            }
-                            
-                            // Get zone name from zoneId
-                            var zoneName = ' ';
-                            if (userZoneId && zoneIdToName[userZoneId]) {
-                                zoneName = zoneIdToName[userZoneId];
-                                console.log('✅ User:', childData.fullName, '| Zone ID:', userZoneId, '| Zone Name:', zoneName);
-                            } else if (userZoneId) {
-                                zoneName = 'Zone Not Found';
-                                console.warn('⚠️ User:', childData.fullName, '| Zone ID:', userZoneId, '| Zone not in mapping');
-                            } else {
-                                zoneName = 'No Zone';
-                                console.log('ℹ️ User:', childData.fullName, '| No zoneId assigned');
-                            }
-                            
-                            records.push([
-                                checkDeletePermission ? '<td class="delete-all"><input type="checkbox" id="is_open_' + childData.id + '" class="is_open" dataId="' + childData.id + '"><label class="col-3 control-label"\n' + 'for="is_open_' + childData.id + '" ></label></td>' : '',
-                                vendorImage + '<a href="' + user_view + '" class="redirecttopage">' + childData.fullName + '</a>',
-                                childData.email ? childData.email : ' ',
-                                childData.phoneNumber ? childData.phoneNumber : ' ',
-                                zoneName,
-                                date + ' ' + time,
-                                childData.active ? '<label class="switch"><input type="checkbox" checked id="' + childData.id + '" name="isActive"><span class="slider round"></span></label>' : '<label class="switch"><input type="checkbox" id="' + childData.id + '" name="isActive"><span class="slider round"></span></label>',
-                                {{--'<a href="' + trroute1 + '">{{trans("lang.transaction")}}</a>',--}}
-                                    '<span class="action-btn"><a href="' + user_view + '"><i class="mdi mdi-eye"></i></a><a href="' + route1 + '"><i class="mdi mdi-lead-pencil" title="Edit"></i></a><?php if (in_array('user.delete', json_decode(@session('user_permissions'), true))){ ?> <a id="' + childData.id + '" class="delete-btn" name="user-delete" href="javascript:void(0)"><i class="mdi mdi-delete"></i></a></td><?php } ?></span>'
-                            ]);
-                        });
-                        $('#data-table_processing').hide();
-                        callback({
-                            draw: data.draw,
-                            recordsTotal: totalRecords,
-                            recordsFiltered: totalRecords,
-                            filteredData: filteredRecords,
-                            data: records
-                        });
-                    }).catch(function (error) {
-                        console.error("Error fetching data from Firestore:", error);
-                        $('#data-table_processing').hide();
-                        callback({
-                            draw: data.draw,
-                            recordsTotal: 0,
-                            recordsFiltered: 0,
-                            filteredData: [],
-                            data: []
-                        });
-                    });
-                },
-                order: [checkDeletePermission ? 5 : 4, 'desc'],
-                columnDefs: [
-                    {
-                        targets: (checkDeletePermission) ? 5 : 4,
-                        type: 'date',
-                        render: function (data) {
-                            return data;
-                        }
                     },
-                    {orderable: false, targets: (checkDeletePermission) ? [0, 6, 7] : [5, 6]},
-                ],
-                "language": {
-                    "zeroRecords": "{{trans("lang.no_record_found")}}",
-                    "emptyTable": "{{trans("lang.no_record_found")}}",
-                    "processing": ""
-                },
-                dom: 'lfrtipB',
-                buttons: [
-                    {
-                        extend: 'collection',
-                        text: '<i class="mdi mdi-cloud-download"></i> Export as',
-                        className: 'btn btn-info',
-                        buttons: [
-                            {
-                                extend: 'excelHtml5',
-                                text: 'Export Excel',
-                                action: function (e, dt, button, config) {
-                                    exportData(dt, 'excel', fieldConfig);
-                                }
-                            },
-                            {
-                                extend: 'pdfHtml5',
-                                text: 'Export PDF',
-                                action: function (e, dt, button, config) {
-                                    exportData(dt, 'pdf', fieldConfig);
-                                }
-                            },
-                            {
-                                extend: 'csvHtml5',
-                                text: 'Export CSV',
-                                action: function (e, dt, button, config) {
-                                    exportData(dt, 'csv', fieldConfig);
-                                }
+                    order: [checkDeletePermission ? 5 : 4, 'desc'],
+                    columnDefs: [
+                        {
+                            targets: (checkDeletePermission) ? 5 : 4,
+                            type: 'date',
+                            render: function (data) {
+                                return data;
                             }
-                        ]
+                        },
+                        {orderable: false, targets: (checkDeletePermission) ? [0, 6, 7] : [5, 6]},
+                    ],
+                    "language": {
+                        "zeroRecords": "{{trans("lang.no_record_found")}}",
+                        "emptyTable": "{{trans("lang.no_record_found")}}",
+                        "processing": ""
+                    },
+                    dom: 'lfrtipB',
+                    buttons: [
+                        {
+                            extend: 'collection',
+                            text: '<i class="mdi mdi-cloud-download"></i> Export as',
+                            className: 'btn btn-info',
+                            buttons: [
+                                {
+                                    extend: 'excelHtml5',
+                                    text: 'Export Excel',
+                                    action: function (e, dt, button, config) {
+                                        exportData(dt, 'excel', fieldConfig);
+                                    }
+                                },
+                                {
+                                    extend: 'pdfHtml5',
+                                    text: 'Export PDF',
+                                    action: function (e, dt, button, config) {
+                                        exportData(dt, 'pdf', fieldConfig);
+                                    }
+                                },
+                                {
+                                    extend: 'csvHtml5',
+                                    text: 'Export CSV',
+                                    action: function (e, dt, button, config) {
+                                        exportData(dt, 'csv', fieldConfig);
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    initComplete: function () {
+                        $(".dataTables_filter").append($(".dt-buttons").detach());
+                        $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete', 'new-password').val('');
+                        $('.dataTables_filter label').contents().filter(function () {
+                            return this.nodeType === 3;
+                        }).remove();
                     }
-                ],
-                initComplete: function () {
-                    $(".dataTables_filter").append($(".dt-buttons").detach());
-                    $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete', 'new-password').val('');
-                    $('.dataTables_filter label').contents().filter(function () {
-                        return this.nodeType === 3;
-                    }).remove();
-                }
-            });
-            table.columns.adjust().draw();
+                });
+                table.columns.adjust().draw();
 
-            function debounce(func, wait) {
-                let timeout;
-                const context = this;
-                return function (...args) {
-                    clearTimeout(timeout);
-                    timeout = setTimeout(() => func.apply(context, args), wait);
-                };
-            }
-
-            $('#search-input').on('input', debounce(function () {
-                const searchValue = $(this).val();
-                if (searchValue.length >= 3) {
-                    $('#data-table_processing').show();
-                    table.search(searchValue).draw();
-                } else if (searchValue.length === 0) {
-                    $('#data-table_processing').show();
-                    table.search('').draw();
+                function debounce(func, wait) {
+                    let timeout;
+                    const context = this;
+                    return function (...args) {
+                        clearTimeout(timeout);
+                        timeout = setTimeout(() => func.apply(context, args), wait);
+                    };
                 }
-            }, 300));
+
+                $('#search-input').on('input', debounce(function () {
+                    const searchValue = $(this).val();
+                    if (searchValue.length >= 3) {
+                        $('#data-table_processing').show();
+                        table.search(searchValue).draw();
+                    } else if (searchValue.length === 0) {
+                        $('#data-table_processing').show();
+                        table.search('').draw();
+                    }
+                }, 300));
             }); // Close loadZonesPromise.then()
         });
         $("#is_active").click(function () {
@@ -691,79 +533,31 @@
 
         $(document).on("click", "a[name='user-delete']", async function (e) {
             var id = this.id;
-            var userName = '';
-            try {
-                var doc = await database.collection('users').doc(id).get();
-                if (doc.exists) {
-                    var userData = doc.data();
-                    userName = (userData.firstName || '') + ' ' + (userData.lastName || 'Unknown');
-                }
-            } catch (error) {
-                console.error('Error getting user name:', error);
-            }
-
-            await deleteDocumentWithImage('users', id, 'profilePictureURL');
-            const getStoreName = deleteUserData(id);
-            try {
-                if (typeof logActivity === 'function') {
-                    console.log('🔍 Calling logActivity for user deletion...');
-                    await logActivity('users', 'deleted', 'Deleted user: ' + userName);
-                    console.log('✅ Activity logging completed successfully');
-                } else {
-                    console.error('❌ logActivity function is not available');
-                }
-            } catch (error) {
-                console.error('❌ Error calling logActivity:', error);
-            }
-            setTimeout(function () {
+            if (!confirm("{{trans('lang.delete_alert')}}")) return;
+            $('#data-table_processing').show();
+            $.ajax({
+                url: apiBase + '/app-users/' + id,
+                method: 'DELETE',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+            }).done(function(){
+                $('#data-table_processing').hide();
                 window.location.href = '{{ url()->current() }}';
-            }, 7000);
+            }).fail(function(){
+                $('#data-table_processing').hide();
+                alert('Failed to delete user');
+            });
         });
         $(document).on("click", "input[name='isActive']", async function (e) {
             var ischeck = $(this).is(':checked');
             var id = this.id;
-            var userName = '';
-            try {
-                var doc = await database.collection('users').doc(id).get();
-                if (doc.exists) {
-                    var userData = doc.data();
-                    userName = (userData.firstName || '') + ' ' + (userData.lastName || 'Unknown');
-                }
-            } catch (error) {
-                console.error('Error getting user name:', error);
-            }
-
-            if (ischeck) {
-                database.collection('users').doc(id).update({'active': true}).then(async function (result) {
-                    console.log('✅ User activated successfully, now logging activity...');
-                    try {
-                        if (typeof logActivity === 'function') {
-                            console.log('🔍 Calling logActivity for user activation...');
-                            await logActivity('users', 'activated', 'Activated user: ' + userName);
-                            console.log('✅ Activity logging completed successfully');
-                        } else {
-                            console.error('❌ logActivity function is not available');
-                        }
-                    } catch (error) {
-                        console.error('❌ Error calling logActivity:', error);
-                    }
-                });
-            } else {
-                database.collection('users').doc(id).update({'active': false}).then(async function (result) {
-                    console.log('✅ User deactivated successfully, now logging activity...');
-                    try {
-                        if (typeof logActivity === 'function') {
-                            console.log('🔍 Calling logActivity for user deactivation...');
-                            await logActivity('users', 'deactivated', 'Deactivated user: ' + userName);
-                            console.log('✅ Activity logging completed successfully');
-                        } else {
-                            console.error('❌ logActivity function is not available');
-                        }
-                    } catch (error) {
-                        console.error('❌ Error calling logActivity:', error);
-                    }
-                });
-            }
+            $.ajax({
+                url: apiBase + '/app-users/' + id + '/active',
+                method: 'PATCH',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                data: { active: ischeck ? 'true' : 'false' }
+            }).fail(function(){
+                alert('Failed to update status');
+            });
         });
     </script>
 @endsection
