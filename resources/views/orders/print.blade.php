@@ -268,220 +268,82 @@
             </style>
             @section('scripts')
                 <script>
-                    var adminCommission = 0;
-                    var id_rendom = "<?php echo uniqid(); ?>";
+                    // MySQL-based: Order data passed from controller
                     var id = "<?php echo $id; ?>";
-                    var driverId = '';
-                    var fcmToken = '';
-                    var old_order_status = '';
-                    var payment_shared = false;
-                    var deliveryChargeVal = 0;
-                    var tip_amount_val = 0;
-                    var tip_amount = 0;
-                    var total_price = 0;
-                    var total_item_price = 0;
-                    var total_addon_price = 0;
-                    var vendorname = '';
-                    var place_image = '';
-                    var database = firebase.firestore();
-                    var ref = database.collection('restaurant_orders').where("id", "==", id);
-                    var currentCurrency = '';
-                    var currencyAtRight = false;
-                    var decimal_degits = 0;
-                    var refCurrency = database.collection('currencies').where('isActive', '==', true);
-
-                    // Promotional pricing system variables
-                    var promotionalTotals = null;
-                    var promotionalPricingApplied = false;
-                    refCurrency.get().then(async function (snapshots) {
-                        var currencyData = snapshots.docs[0].data();
-                        currentCurrency = currencyData.symbol;
-                        currencyAtRight = currencyData.symbolAtRight;
-                        if (currencyData.decimal_degits) {
-                            decimal_degits = currencyData.decimal_degits;
+                    var order = @json($order);
+                    var currency = @json($currency ?? (object)[]);
+                    
+                    // Currency settings
+                    var currentCurrency = currency?.symbol || '₹';
+                    var currencyAtRight = currency?.symbolAtRight || false;
+                    var decimal_degits = currency?.decimal_degits || 2;
+                    var place_image = '{{ asset("images/placeholder.png") }}';
+                    
+                    // Populate order details
+                    var customerName = (order.user_first_name || '') + ' ' + (order.user_last_name || '');
+                    if (!customerName.trim() && order.author && order.author.firstName) {
+                        customerName = (order.author.firstName || '') + ' ' + (order.author.lastName || '');
+                    }
+                    $(".customerName").text(customerName.trim() || 'N/A');
+                    $(".orderId").text(id);
+                    
+                    // Order date
+                    if (order.createdAt) {
+                        try {
+                            var date = new Date(order.createdAt);
+                            var dateStr = date.toDateString();
+                            var time = date.toLocaleTimeString('en-US');
+                            $(".orderDate").text(dateStr + " " + time);
+                        } catch(e) {
+                            $(".orderDate").text(order.createdAt);
                         }
-
-                        // Now load order data after currency is loaded
-                        ref.get().then(async function (snapshots) {
-                            var order = snapshots.docs[0].data();
-
-                            // ========== PROMOTIONAL PRICING SYSTEM START ==========
-                            console.log('🚀 ===== PROMOTIONAL PRICING SYSTEM STARTING (PRINT) =====');
-                            console.log('🚀 restaurantorders ID:', order.id);
-                            console.log('🚀 restaurantorders vendor ID:', order.vendorID);
-                            console.log('🚀 restaurantorders products count:', order.products ? order.products.length : 0);
-
-                            // Calculate promotional totals first
-                            if (order.vendorID && order.products) {
-                                try {
-                                    promotionalTotals = await calculatePromotionalTotals(order.products, order.vendorID);
-                                    console.log('💰 Promotional totals calculated:', promotionalTotals);
-                                } catch (error) {
-                                    console.error('❌ Error calculating promotional totals:', error);
-                                    promotionalTotals = null;
-                                }
-                            }
-                            $(".customerName").text(order.author.firstName + " " + order.author.lastName);
-                            $(".orderId").text(id);
-                            var date = order.createdAt.toDate().toDateString();
-                            var time = order.createdAt.toDate().toLocaleTimeString('en-US');
-                            $(".orderDate").text(date + " " + time);
+                    }
+                    
+                    // Billing address
                             var billingAddressstring = '';
-                            if (order.address.hasOwnProperty('address')) {
-                                billingAddressstring = billingAddressstring + order.address.address;
+                    if (order.address && order.address.address) {
+                        billingAddressstring = order.address.address;
                             }
-                            if (order.address.hasOwnProperty('locality')) {
-                                billingAddressstring = billingAddressstring + "," + order.address.locality;
+                    if (order.address && order.address.locality) {
+                        billingAddressstring = billingAddressstring + (billingAddressstring ? ', ' : '') + order.address.locality;
                             }
-                            if (order.address.hasOwnProperty('landmark')) {
+                    if (order.address && order.address.landmark) {
                                 billingAddressstring = billingAddressstring + " " + order.address.landmark;
                             }
                             $(".customerAddress").text(billingAddressstring);
-                            if (order.author.hasOwnProperty('phoneNumber')) {
-                                $(".customerPhone").text(shortEditNumber(order.author.phoneNumber));
-                            } else {
-                                $(".customerPhone").text("");
-                            }
-                            if (order.address.hasOwnProperty('country')) {
-                                $("#billing_country").text(order.address.country);
-                            }
-                            if (order.address.hasOwnProperty('email')) {
-                                $("#billing_email").html('<a href="mailto:' + order.address.email + '">' + shortEmail(order.address.email) + '</a>');
-                            } else {
-                                $("#billing_email").html("");
-                            }
-                            if (order.createdAt) {
-                                var date1 = order.createdAt.toDate().toDateString();
-                                var date = new Date(date1);
-                                var dd = String(date.getDate()).padStart(2, '0');
-                                var mm = String(date.getMonth() + 1).padStart(2, '0'); //January is 0!
-                                var yyyy = date.getFullYear();
-                                var createdAt_val = yyyy + '-' + mm + '-' + dd;
-                                var time = order.createdAt.toDate().toLocaleTimeString('en-US');
-                                $('#createdAt').text(createdAt_val + ' ' + time);
-                            }
-                            if (order.payment_method) {
-                                if (order.payment_method == 'cod') {
-                                    $('#payment_method').text('{{trans("lang.cash_on_delivery")}}');
-                                } else if (order.payment_method == 'paypal') {
-                                    $('#payment_method').text('{{trans("lang.paypal")}}');
+                    
+                    // Customer phone
+                    var customerPhone = order.user_phone || (order.author && order.author.phoneNumber) || '';
+                    $(".customerPhone").text(customerPhone ? shortEditNumber(customerPhone) : "");
+                    
+                    // Store/vendor information
+                    if (order.vendor_title) {
+                        $('.storeName').html(order.vendor_title);
+                    }
+                    if (order.vendor_phone) {
+                        $('.storePhone').text(shortEditNumber(order.vendor_phone));
+                    }
+                    if (order.vendor_location) {
+                        $('.storeAddress').text(order.vendor_location);
+                    }
+                    if (order.vendor_photo) {
+                        $('.resturant-img').attr('src', order.vendor_photo);
                                 } else {
-                                    $('#payment_method').text(order.payment_method);
-                                }
-                            }
-                            if (order.hasOwnProperty('takeAway') && order.takeAway) {
-                                $('#driver_pending').hide();
-                                $('#driver_rejected').hide();
-                                $('#order_shipped').hide();
-                                $('#in_transit').hide();
-                                $('#order_type').text('{{trans("lang.order_takeaway")}}');
-                                $('.payment_method').hide();
-                                orderTakeAwayOption = true;
-                            } else {
-                                $('#order_type').text('{{trans("lang.order_delivery")}}');
-                                $('.payment_method').show();
-                            }
-                            if ((order.driver != '' && order.driver != undefined) && (order.takeAway)) {
-                                $('#driver_carName').text(order.driver.carName);
-                                $('#driver_carNumber').text(order.driver.carNumber);
-                                $('#driver_email').html('<a href="mailto:' + order.driver.email + '">' + shortEmail(order.driver.email) + '</a>');
-                                $('#driver_firstName').text(order.driver.firstName);
-                                $('#driver_lastName').text(order.driver.lastName);
-                                $('#driver_phone').text(shortEditNumber(order.driver.phoneNumber));
-                            } else {
-                                $('.order_edit-genrl').removeClass('col-md-4').addClass('col-md-6');
-                                $('.order_addre-edit').removeClass('col-md-4').addClass('col-md-6');
-                                $('.driver_details_hide').empty();
-                            }
-                            if (order.driverID != '' && order.driverID != undefined) {
-                                driverId = order.driverID;
-                            }
-                            if (order.vendor && order.vendor.author != '' && order.vendor.author != undefined) {
-                                vendorAuthor = order.vendor.author;
-                            }
-                            fcmToken = order.author.fcmToken;
-                            vendorname = order.vendor.title;
-                            fcmTokenVendor = order.vendor.fcmToken;
-                            customername = order.author.firstName;
-                            vendorId = order.vendor.id;
-                            old_order_status = order.status;
-                            if (order.payment_shared != undefined) {
-                                payment_shared = order.payment_shared;
-                            }
-                            append_procucts_list = document.getElementById('order_products');
+                        $('.resturant-img').attr('src', place_image);
+                    }
+                    
+                    // Product list
+                    var append_procucts_list = document.getElementById('order_products');
                             append_procucts_list.innerHTML = '';
 
-                            // Build product list with promotional pricing
-                            var productsListHTML = '';
-                            if (order.vendorID && order.products) {
-                                try {
-                                    productsListHTML = await buildHTMLProductsListWithPromotions(order.products, order.vendorID);
-                                    console.log('🎯 Product list built with promotional pricing');
-                                } catch (error) {
-                                    console.error('❌ Error building promotional product list:', error);
-                                    productsListHTML = buildHTMLProductsList(order.products);
-                                }
-                            } else {
-                                productsListHTML = buildHTMLProductsList(order.products);
-                            }
-
-                            var productstotalHTML = buildHTMLProductstotal(order);
+                    // Build product list
+                    var productsListHTML = buildHTMLProductsList(order.products || []);
                             if (productsListHTML != '') {
                                 append_procucts_list.innerHTML = productsListHTML;
                             }
-                            orderPreviousStatus = order.status;
-                            if (order.hasOwnProperty('payment_method')) {
-                                orderPaymentMethod = order.payment_method;
-                            }
-                            $("#order_status option[value='" + order.status + "']").attr("selected", "selected");
-                            if (order.status == "restaurantorders Rejected" || order.status == "Driver Rejected") {
-                                $("#order_status").prop("disabled", true);
-                            }
-                            var price = 0;
-                            if (order.vendorID) {
-                                var vendor = database.collection('vendors').where("id", "==", order.vendorID);
-                                vendor.get().then(async function (snapshotsnew) {
-                                    if (snapshotsnew.hasData != '') {
-                                        var vendordata = snapshotsnew.docs[0].data();
-                                        if (vendordata.id) {
-                                            // Determine correct view route based on vendor type
-                                            var route_view;
-                                            if (vendordata.hasOwnProperty('vType') && vendordata.vType === 'mart') {
-                                                route_view = '{{route("marts.view",":id")}}';
-                                            } else {
-                                                route_view = '{{route("restaurants.view",":id")}}';
-                                            }
-                                            route_view = route_view.replace(':id', vendordata.id);
-                                            $('#resturant-view').attr('data-url', route_view);
-                                        }
-                                        if (vendordata.photo != null && vendordata.photo != "") {
-                                            $('.resturant-img').attr('src', vendordata.photo);
-                                        } else {
-                                            $('.resturant-img').attr('src', place_image);
-                                        }
-                                        if (vendordata.title != "" && vendordata.title != null) {
-                                            $('.storeName').html(vendordata.title);
-                                        }
-                                        if (vendordata.phonenumber != "" && vendordata.phonenumber != null) {
-                                            $('.storePhone').text(shortEditNumber(vendordata.phonenumber));
-                                        } else {
-                                            $('.storePhone').text("");
-                                        }
-                                        if (vendordata.location != "" && vendordata.location != null) {
-                                            $('.storeAddress').text(vendordata.location);
-                                        }
-                                    }
-                                });
-                            }
-                            // Debug: Log order data to see delivery charge
-                            console.log('restaurantorders data for print:', order);
-                            console.log('Delivery charge from order:', order.deliveryCharge);
-                            console.log('Tip amount from order:', order.tip_amount);
-
+                    
+                    // Fill order summary
                             fillPrintOrderSummary(order);
-                            jQuery("#data-table_processing").hide();
-                        });
-                    });
 
                     function buildHTMLProductsList(snapshotsProducts) {
                         var html = '';

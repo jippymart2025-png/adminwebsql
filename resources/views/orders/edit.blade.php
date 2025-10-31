@@ -410,115 +410,49 @@
 @section('scripts')
     <script src="https://cdnjs.cloudflare.com/ajax/libs/printThis/1.15.0/printThis.js"></script>
     <script>
-        var adminCommission = 0;
-        var id_rendom = "<?php echo uniqid(); ?>";
+        // MySQL-based - Order data passed from controller
         var id = "<?php echo $id; ?>";
-        var driverId = '';
-        var subscriptionTotalOrders = -1;
-        var old_order_status = '';
-        var payment_shared = false;
-        var deliveryChargeVal = 0;
-        var deliveryCharge = 0;
-        var fcmToken = '';
-        var manfcmTokenVendor = '';
-        var fcmTokenVendor = '';
-        var customername = '';
-        var vendorname = '';
-        var tip_amount_val = 0;
-        var tip_amount = 0;
-        var page_size = 5;
-        var database = firebase.firestore();
-        var ref = database.collection('restaurant_orders').where("id", "==", id);
-        var ref_review_attributes = database.collection('review_attributes');
-        var selected_review_attributes = '';
-        var refUserReview = database.collection('foods_review').where('orderid', '==', id);
+        
+        // Order data from PHP
+        var orderData = @json($order);
+        var currency = @json($currency ?? (object)[]);
+        var availableDrivers = @json($availableDrivers ?? []);
+        
+        // Currency settings
+        var currentCurrency = currency?.symbol || '₹';
+        var currencyAtRight = currency?.symbolAtRight || false;
+        var decimal_degits = currency?.decimal_degits || 2;
+        
+        // Order variables
+        var driverId = orderData.driverID || '';
+        var old_order_status = orderData.status || '';
+        var orderPreviousStatus = orderData.status || '';
+        var orderTakeAwayOption = (orderData.takeAway == '1' || orderData.takeAway == 'true' || orderData.takeAway === true);
+        var deliveryChargeVal = parseFloat(orderData.deliveryCharge || 0);
+        var deliveryCharge = parseFloat(orderData.deliveryCharge || 0);
+        var tip_amount = parseFloat(orderData.tip_amount || 0);
+        var orderCustomerId = orderData.authorID || '';
+        var orderPaytableAmount = parseFloat(orderData.toPayAmount || 0);
+        var payment_shared = orderData.payment_shared || false;
+        
+        // Driver and vendor info
+        var currentDriverId = driverId;
+        var customername = (orderData.user_first_name || '') + ' ' + (orderData.user_last_name || '');
+        var vendorname = orderData.vendor_title || '';
+        
+        // Helper variables
         var append_procucts_list = '';
         var append_procucts_total = '';
         var total_price = 0;
-        var currentCurrency = '';
-        var currencyAtRight = false;
-        var refCurrency = database.collection('currencies').where('isActive', '==', true);
-        var orderPreviousStatus = '';
-        var orderTakeAwayOption = false;
-        var manname = '';
-        var reviewAttributes = {};
-        var decimal_degits = 0;
-        var orderCustomerId = '';
-        var orderPaytableAmount = 0;
-        var vendorAuthor = '';
-        var orderAcceptedSubject = '';
-        var orderAcceptedMsg = '';
-        var orderRejectedSubject = '';
-        var orderRejectedMsg = '';
-        var orderCompletedSubject = '';
-        var orderCompletedMsg = '';
-        var takeAwayOrderCompletedSubject = '';
-        var takeAwayOrderCompletedMsg = '';
-        var driverAcceptedMsg = '';
-        var driverAcceptedSubject = '';
-        var basePrice = 0;
-        var total_tax_amount = 0;
-        var subscriptionModel = false;
-        var availableDrivers = [];
-        var currentDriverId = '';
-
-        database.collection('settings').doc("restaurant").get().then(async function (snapshots) {
-            var subscriptionSetting = snapshots.data();
-            if (subscriptionSetting.subscription_model == true) {
-                subscriptionModel = true;
-            }
-        });
-
-        // Enhanced load available drivers for manual assignment
-        async function loadAvailableDrivers() {
-            try {
-                // Show loading state
-                $('#driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Loading drivers...</option>');
-
-                // Call the Cloud Function to get available drivers
-                const getDriversFunction = firebase.functions().httpsCallable('getAvailableDriversForOrder');
-                const result = await getDriversFunction({
-                    orderId: id,
-                    zoneId: null // Get all drivers, can be filtered by zone later
-                });
-
-                if (result.data.success) {
-                    availableDrivers = result.data.drivers;
+        var place_image = '{{ asset("images/placeholder.png") }}';
+        
+        // Load available drivers for manual assignment (from PHP)
+        function loadAvailableDrivers() {
                     $('#driver_selector').empty();
                     $('#driver_selector').append('<option value="">{{ trans("lang.select_driver") }}</option>');
 
-                    result.data.drivers.forEach((driverData) => {
-                        var driverName = (driverData.firstName || '') + ' ' + (driverData.lastName || '');
-                        var driverPhone = driverData.phoneNumber || '';
-                        var walletAmount = driverData.wallet_amount || 0;
-                        var isOnline = driverData.isOnline ? '🟢' : '🔴';
-                        var displayText = `${isOnline} ${driverName} (${driverPhone}) - ₹${walletAmount}`;
-
-                        $('#driver_selector').append($("<option></option>")
-                            .attr("value", driverData.id)
-                            .text(displayText));
-                    });
-
-                    console.log(`✅ Loaded ${result.data.total} available drivers for order ${id}`);
-                } else {
-                    console.error('Failed to load drivers:', result.data);
-                    $('#driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Error loading drivers</option>');
-                }
-
-            } catch (error) {
-                console.error('Error loading available drivers:', error);
-                $('#driver_selector').html('<option value="">{{ trans("lang.select_driver") }}</option><option value="" disabled>Error loading drivers</option>');
-
-                // Fallback to direct Firestore query
-                try {
-                    const snapshots = await database.collection('users').where('role', '==', 'driver').where('isActive', '==', true).get();
-                    availableDrivers = [];
-                    $('#driver_selector').empty();
-                    $('#driver_selector').append('<option value="">{{ trans("lang.select_driver") }}</option>');
-
-                    snapshots.docs.forEach((doc) => {
-                        var driverData = doc.data();
-                        availableDrivers.push(driverData);
+            if (availableDrivers && availableDrivers.length > 0) {
+                availableDrivers.forEach(function(driverData) {
                         var driverName = (driverData.firstName || '') + ' ' + (driverData.lastName || '');
                         var driverPhone = driverData.phoneNumber || '';
                         var displayText = driverName + ' (' + driverPhone + ')';
@@ -527,9 +461,6 @@
                             .attr("value", driverData.id)
                             .text(displayText));
                     });
-                } catch (fallbackError) {
-                    console.error('Fallback driver loading also failed:', fallbackError);
-                }
             }
         }
 
@@ -538,7 +469,7 @@
             loadAvailableDrivers();
 
             // Handle driver assignment
-            $('#assign_driver_btn').click(async function () {
+            $('#assign_driver_btn').click(function () {
                 var selectedDriverId = $('#driver_selector').val();
                 if (!selectedDriverId) {
                     alert('{{ trans("lang.please_select_driver") }}');
@@ -546,146 +477,76 @@
                 }
 
                 if (confirm('{{ trans("lang.confirm_assign_driver") }}')) {
-                    await assignDriverToOrder(selectedDriverId);
+                    assignDriverToOrder(selectedDriverId);
                 }
             });
 
             // Handle driver removal
-            $('#remove_driver_btn').click(async function () {
+            $('#remove_driver_btn').click(function () {
                 if (confirm('{{ trans("lang.confirm_remove_driver") }}')) {
-                    await removeDriverFromOrder();
+                    removeDriverFromOrder();
                 }
             });
         }
 
-        // Enhanced assign driver to order using Cloud Function
-        async function assignDriverToOrder(driverId) {
-            try {
-                // Show loading state
+        // Assign driver to order using Laravel route
+        function assignDriverToOrder(driverId) {
                 $('#assign_driver_btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Assigning...');
 
-                // Call the Cloud Function for manual assignment
-                const manualAssignFunction = firebase.functions().httpsCallable('manualAssignDriverToOrder');
-                const result = await manualAssignFunction({
-                    orderId: id,
-                    driverId: driverId,
-                    assignedBy: '{{ auth()->user()->name ?? "Admin" }}',
-                    reason: 'Manual assignment from order edit page'
-                });
-
-                if (result.data.success) {
+            $.ajax({
+                url: '{{ route("orders.assign.driver", ":id") }}'.replace(':id', id),
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    driver_id: driverId
+                },
+                success: function(response) {
+                    if (response.success) {
                     alert('{{ trans("lang.driver_assigned_successfully") }}');
                     window.location.reload();
                 } else {
-                    alert('Failed to assign driver: ' + (result.data.message || 'Unknown error'));
-                }
-
-            } catch (error) {
-                console.error('Error assigning driver:', error);
-
-                // Handle specific error types
-                let errorMessage = '{{ trans("lang.error_assigning_driver") }}';
-                if (error.code === 'functions/unauthenticated') {
-                    errorMessage = 'Authentication required. Please log in again.';
-                } else if (error.code === 'functions/not-found') {
-                    errorMessage = 'restaurantorders or driver not found.';
-                } else if (error.code === 'functions/failed-precondition') {
-                    errorMessage = error.message || 'restaurantorders is not eligible for manual assignment.';
-                } else if (error.code === 'functions/invalid-argument') {
-                    errorMessage = error.message || 'Invalid driver selected.';
-                }
-
-                alert(errorMessage);
-            } finally {
-                // Reset button state
+                        alert('Error: ' + (response.message || 'Failed to assign driver'));
+                    }
+                },
+                error: function() {
+                    alert('{{ trans("lang.error_assigning_driver") }}');
+                },
+                finally: function() {
                 $('#assign_driver_btn').prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
             }
+            });
         }
 
-        // Enhanced remove driver from order using Cloud Function
-        async function removeDriverFromOrder() {
-            try {
-                // Show loading state
+        // Remove driver from order using Laravel route
+        function removeDriverFromOrder() {
                 $('#remove_driver_btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Removing...');
 
-                // Call the Cloud Function for manual driver removal
-                const manualRemoveFunction = firebase.functions().httpsCallable('manualRemoveDriverFromOrder');
-                const result = await manualRemoveFunction({
-                    orderId: id,
-                    reason: 'Manual removal from order edit page'
-                });
-
-                if (result.data.success) {
+            $.ajax({
+                url: '{{ route("orders.remove.driver", ":id") }}'.replace(':id', id),
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    if (response.success) {
                     alert('{{ trans("lang.driver_removed_successfully") }}');
                     window.location.reload();
                 } else {
-                    alert('Failed to remove driver: ' + (result.data.message || 'Unknown error'));
-                }
-
-            } catch (error) {
-                console.error('Error removing driver:', error);
-
-                // Handle specific error types
-                let errorMessage = '{{ trans("lang.error_removing_driver") }}';
-                if (error.code === 'functions/unauthenticated') {
-                    errorMessage = 'Authentication required. Please log in again.';
-                } else if (error.code === 'functions/not-found') {
-                    errorMessage = 'restaurantorders not found.';
-                } else if (error.code === 'functions/failed-precondition') {
-                    errorMessage = error.message || 'Cannot remove driver from order in current status.';
-                }
-
-                alert(errorMessage);
-            } finally {
-                // Reset button state
+                        alert('Error: ' + (response.message || 'Failed to remove driver'));
+                    }
+                },
+                error: function() {
+                    alert('{{ trans("lang.error_removing_driver") }}');
+                },
+                finally: function() {
                 $('#remove_driver_btn').prop('disabled', false).html('<i class="fa fa-user-times"></i> {{ trans("lang.remove_driver") }}');
-            }
-        }
-
-        database.collection('dynamic_notification').get().then(async function (snapshot) {
-            if (snapshot.docs.length > 0) {
-                snapshot.docs.map(async (listval) => {
-                    val = listval.data();
-                    if (val.type == "restaurant_rejected") {
-                        orderRejectedSubject = val.subject;
-                        orderRejectedMsg = val.message;
-                    } else if (val.type == "driver_completed") {
-                        orderCompletedSubject = val.subject;
-                        orderCompletedMsg = val.message;
-                    } else if (val.type == "takeaway_completed") {
-                        takeAwayOrderCompletedSubject = val.subject;
-                        takeAwayOrderCompletedMsg = val.message;
-                    } else if (val.type == "restaurant_accepted") {
-                        orderAcceptedSubject = val.subject;
-                        orderAcceptedMsg = val.message;
-                    } else if (val.type == "driver_accepted") {
-                        driverAcceptedSubject = val.subject;
-                        driverAcceptedMsg = val.message;
                     }
                 });
             }
-        });
-        refCurrency.get().then(async function (snapshots) {
-            var currencyData = snapshots.docs[0].data();
-            currentCurrency = currencyData.symbol;
-            currencyAtRight = currencyData.symbolAtRight;
-            if (currencyData.decimal_degits) {
-                decimal_degits = currencyData.decimal_degits;
-            }
-        });
-        var geoFirestore = new GeoFirestore(database);
-        var place_image = '';
-        var ref_place = database.collection('settings').doc("placeHolderImage");
-        ref_place.get().then(async function (snapshots) {
-            var placeHolderImage = snapshots.data();
-            place_image = placeHolderImage.image;
-        });
-        $(document).ready(function () {
-            // Initialize driver assignment functionality
-            initializeDriverAssignment();
 
-            // Initialize promotional pricing interceptor
-            initializePromotionalPricingInterceptor();
+        $(document).ready(function () {
+            // Initialize driver assignment
+            initializeDriverAssignment();
 
             $('.time-picker').timepicker({
                 timeFormat: "HH:mm",
@@ -699,60 +560,72 @@
                     $(e.currentTarget).val('0' + hours + ':' + min);
                 }
             });
-            var alovelaceDocumentRef = database.collection('restaurant_orders').doc();
-            if (alovelaceDocumentRef.id) {
-                id_rendom = alovelaceDocumentRef.id;
-            }
             $(document.body).on('click', '.redirecttopage', function () {
                 var url = $(this).attr('data-url');
                 window.location.href = url;
             });
-            jQuery("#data-table_processing").show();
-            ref.get().then(async function (snapshots) {
-                vendorOrder = snapshots.docs[0].data();
-                getUserReview(vendorOrder);
-                var order = snapshots.docs[0].data();
+            
+            // MySQL-based: Populate order data from PHP
+            var order = orderData;
+            var vendorOrder = orderData; // For compatibility
+            
+            // Populate order details
                 append_procucts_list = document.getElementById('order_products');
                 append_procucts_list.innerHTML = '';
                 append_procucts_total = document.getElementById('order_products_total');
                 append_procucts_total.innerHTML = '';
-                if (order.address.name) {
+            
+            // Billing name
+            if (order.address && order.address.name) {
                     $("#billing_name").text(order.address.name);
                 } else {
-                    $("#billing_name").text(order.author.firstName + ' ' + order.author.lastName);
+                var billingName = (order.user_first_name || '') + ' ' + (order.user_last_name || '');
+                if (!billingName.trim() && order.author && order.author.firstName) {
+                    billingName = (order.author.firstName || '') + ' ' + (order.author.lastName || '');
                 }
+                $("#billing_name").text(billingName.trim() || 'N/A');
+            }
+            
                 $("#trackng_number").text(id);
+            
+            // Billing address
                 var billingAddressstring = '';
-                if (order.address.hasOwnProperty('address')) {
+            if (order.address && order.address.address) {
                     $("#billing_line1").text(order.address.address);
                 }
-                if (order.address.hasOwnProperty('locality')) {
-                    billingAddressstring = billingAddressstring + order.address.locality;
+            if (order.address && order.address.locality) {
+                billingAddressstring = order.address.locality;
                 }
-                if (order.address.hasOwnProperty('landmark')) {
+            if (order.address && order.address.landmark) {
                     billingAddressstring = billingAddressstring + " " + order.address.landmark;
                 }
                 $("#billing_line2").text(billingAddressstring);
-                if (order.author.hasOwnProperty('phoneNumber')) {
-                    $("#billing_phone").text(shortEditNumber(order.author.phoneNumber));
-                } else {
-                    $("#billing_phone").text("");
-                }
-                if (order.author.hasOwnProperty('email')) {
-                    $("#billing_email").html('<a href="mailto:' + order.author.email + '">' +
-                        shortEmail(order.author.email) + '</a>');
+            
+            // Billing phone and email
+            var userPhone = order.user_phone || (order.author && order.author.phoneNumber) || '';
+            $("#billing_phone").text(userPhone ? shortEditNumber(userPhone) : "");
+            
+            var userEmail = order.user_email || (order.author && order.author.email) || '';
+            if (userEmail) {
+                $("#billing_email").html('<a href="mailto:' + userEmail + '">' + shortEmail(userEmail) + '</a>');
                 } else {
                     $("#billing_email").html("");
                 }
+            
+            // Created date
                 if (order.createdAt) {
-                    var date1 = order.createdAt.toDate().toDateString();
-                    var date = new Date(date1);
+                try {
+                    // Parse ISO string format
+                    var date = new Date(order.createdAt);
                     var dd = String(date.getDate()).padStart(2, '0');
-                    var mm = String(date.getMonth() + 1).padStart(2, '0'); //January is 0!
+                    var mm = String(date.getMonth() + 1).padStart(2, '0');
                     var yyyy = date.getFullYear();
                     var createdAt_val = yyyy + '-' + mm + '-' + dd;
-                    var time = order.createdAt.toDate().toLocaleTimeString('en-US');
+                    var time = date.toLocaleTimeString('en-US');
                     $('#createdAt').text(createdAt_val + ' ' + time);
+                } catch(e) {
+                    $('#createdAt').text(order.createdAt);
+                }
                 }
                 var payment_method = '';
                 if (order.payment_method) {
@@ -863,6 +736,7 @@
                     $('#manual_driver_assignment_section').hide();
                     $('#assign_driver_button_section').hide();
                 } else {
+                    // MySQL-based: populate vendor and product sections even when no driver is assigned
                     $('.order_edit-genrl').removeClass('col-md-7').addClass('col-md-7');
                     $('.order_addre-edit').removeClass('col-md-5').addClass('col-md-5');
                     $('.driver_details_hide').empty();
@@ -873,6 +747,67 @@
                     $('#assign_driver_btn').show();
                     $('#remove_driver_btn').hide();
                 }
+
+                // --- MySQL-based: Vendor details fill ---
+                try {
+                    var vendorIdVal = order.vendorID || order.vendor_db_id || order.vendor_id;
+                    var route_view = '';
+                    if ((order.vendor_type || '').toLowerCase() === 'mart') {
+                        route_view = '{{ route('marts.view', ':id') }}'.replace(':id', vendorIdVal || '');
+                    } else {
+                        route_view = '{{ route('restaurants.view', ':id') }}'.replace(':id', vendorIdVal || '');
+                    }
+                    if (vendorIdVal) {
+                        $('#resturant-view').attr('data-url', route_view);
+                    }
+                    if (order.vendor_photo) {
+                        $('.resturant-img').attr('src', order.vendor_photo);
+                    } else {
+                        $('.resturant-img').attr('src', place_image);
+                    }
+                    if (order.vendor_title) {
+                        $('.vendor-title').html(order.vendor_title);
+                    }
+                    if (order.vendor_phone) {
+                        $('#vendor_phone').text(shortEditNumber(order.vendor_phone));
+                    } else {
+                        $('#vendor_phone').text("");
+                    }
+                    if (order.vendor_location) {
+                        $('#vendor_address').text(order.vendor_location);
+                    }
+                } catch (e) {}
+
+                // --- MySQL-based: Build products list and totals (fallback if promotional builder not used) ---
+                try {
+                    var products = Array.isArray(order.products) ? order.products : [];
+                    var html = '';
+                    var total_price_local = 0;
+                    products.forEach(function (product) {
+                        var name = product.name || '';
+                        var qty = parseInt(product.quantity || 1);
+                        var unit = product.discountPrice && parseFloat(product.discountPrice) > 0 ? parseFloat(product.discountPrice) : parseFloat(product.price || 0);
+                        var extras_price = parseFloat(product.extras_price || 0) * qty;
+                        var row_total = (unit * qty) + (isNaN(extras_price) ? 0 : extras_price);
+                        total_price_local += row_total;
+
+                        var price_val = currencyAtRight ? (unit.toFixed(decimal_degits) + currentCurrency) : (currentCurrency + unit.toFixed(decimal_degits));
+                        var extras_val = currencyAtRight ? ((isNaN(extras_price)?0:extras_price).toFixed(decimal_degits) + currentCurrency) : (currentCurrency + (isNaN(extras_price)?0:extras_price).toFixed(decimal_degits));
+                        var row_total_val = currencyAtRight ? (row_total.toFixed(decimal_degits) + currentCurrency) : (currentCurrency + row_total.toFixed(decimal_degits));
+
+                        html += '<tr>';
+                        html += '<td class="order-product"><div class="order-product-box"><div class="orders-tracking"><h6>' + name + '</h6></div></div></td>';
+                        html += '<td class="text-green text-center"><span class="item-price">' + price_val + '</span></td>';
+                        html += '<td> × ' + qty + '</td>';
+                        html += '<td class="text-green"> + ' + extras_val + '</td>';
+                        html += '<td class="text-green"> ' + row_total_val + '</td>';
+                        html += '</tr>';
+                    });
+                    if (html) {
+                        document.getElementById('order_products').innerHTML = html;
+                    }
+                } catch (e) {}
+
                 if (order.driverID != '' && order.driverID != undefined) {
                     driverId = order.driverID;
                 }
@@ -1196,9 +1131,46 @@
                 });
             }
 
-            $(".edit-form-btn").click(async function () {
+            $(".edit-form-btn").click(function () {
                 var clientName = $(".client_name").val();
                 var orderStatus = $("#order_status").val();
+                
+                if (old_order_status != orderStatus) {
+                    // Update order status via Laravel route
+                    $.ajax({
+                        type: 'POST',
+                        url: '{{ route("orders.update.status", ":id") }}'.replace(':id', id),
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            status: orderStatus
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                alert('Order status updated successfully');
+                                <?php if (isset($_GET['eid']) && $_GET['eid'] != '') { ?>
+                                    window.location.href = "{{ route('restaurants.orders', $_GET['eid']) }}";
+                                <?php } else { ?>
+                                    window.location.href = '{{ route('orders') }}';
+                                <?php } ?>
+                            } else {
+                                alert('Error: ' + (response.message || 'Failed to update status'));
+                            }
+                        },
+                        error: function() {
+                            alert('Error updating order status');
+                        }
+                    });
+                } else {
+                    // No status change, just close
+                    <?php if (isset($_GET['eid']) && $_GET['eid'] != '') { ?>
+                        window.location.href = "{{ route('restaurants.orders', $_GET['eid']) }}";
+                    <?php } else { ?>
+                        window.location.href = '{{ route('orders') }}';
+                    <?php } ?>
+                }
+                
+                // Legacy code below - keeping for reference but will be removed
+                /*
                 if (old_order_status != orderStatus) {
                     if (orderStatus == "restaurantorders Placed") {
                         manfcmTokenVendor = fcmTokenVendor;
@@ -1208,10 +1180,8 @@
                         manname = vendorname;
                     }
                     if (orderStatus == "restaurantorders Accepted") {
-
-                        ref.get().then(async function (snapshot) {
-                            order = snapshot.docs[0].data();
-                            id = order.id;
+                        // This section removed - handled by Laravel route
+                */
                             var scheduleTime = '';
                             if (order.hasOwnProperty('scheduleTime') && order
                                 .scheduleTime != null) {

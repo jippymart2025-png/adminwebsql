@@ -186,8 +186,11 @@ Route::middleware(['permission:mart-items,mart-items.create'])->group(function (
 });
 
 Route::middleware(['permission:orders,orders'])->group(function () {
-    Route::get('/orders/', [App\Http\Controllers\OrderController::class, 'index'])->name('orders');
+    Route::get('/orders', [App\Http\Controllers\OrderController::class, 'index'])->name('orders');
     Route::get('/orders/{id}', [App\Http\Controllers\OrderController::class, 'index'])->name('restaurants.orders');
+    Route::post('/orders/{id}/assign-driver', [App\Http\Controllers\OrderController::class, 'assignDriver'])->name('orders.assign.driver');
+    Route::post('/orders/{id}/remove-driver', [App\Http\Controllers\OrderController::class, 'removeDriver'])->name('orders.remove.driver');
+    Route::post('/orders/{id}/update-status', [App\Http\Controllers\OrderController::class, 'updateStatus'])->name('orders.update.status');
 
 });
 Route::middleware(['permission:orders,orders.edit'])->group(function () {
