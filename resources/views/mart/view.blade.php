@@ -642,7 +642,66 @@
 @section('scripts')
 <script>
     var id="<?php echo $id;?>";
-    var database=firebase.firestore();
+    // Load mart details from MySQL and render
+    function fillViewFromSQL(m){
+        try{
+            $(".restaurant_name").text(m.title || '');
+            $(".restaurant_address").text(m.location || '');
+            if (m.phonenumber){ $(".restaurant_phone").text(m.phonenumber); }
+            if (m.photo){ $("#restaurant_image").html('<img width="200px" height="auto" src="'+m.photo+'">'); }
+            if (m.zone_name){ $("#zone_name").text(m.zone_name); }
+            try{ var cts=m.categoryTitle; if (typeof cts==='string'){ cts=JSON.parse(cts);} if(Array.isArray(cts)){ $(".restaurant_cuisines").text(cts.join(', ')); } }catch(e){}
+            try{ var ac=m.adminCommission; if (typeof ac==='string'){ ac=JSON.parse(ac);} if(ac){ var t=(ac.commissionType==='Percent')? (ac.fix_commission+'%') : (ac.fix_commission||''); $(".admin_commission").text(t); } }catch(e){}
+            if (m.latitude && m.longitude){
+                var mapSrc='https://maps.google.com/maps?width=600&height=225&hl=en&q='+m.latitude+','+m.longitude+'&t=&z=14&ie=UTF8&iwloc=B&output=embed';
+                $(".gmap_iframe").attr('src', mapSrc);
+            }
+        }catch(e){}
+    }
+    $(document).ready(function(){
+        $.getJSON('{{ route("marts.json", ":id") }}'.replace(':id', id))
+            .done(function(resp){ if (resp && resp.success){ fillViewFromSQL(resp.vendor); } });
+    });
+    // Provide a smarter Firebase stub to avoid legacy code breaking
+    var database = {
+        collection: function(name){
+            var self = {
+                _name: name || '',
+                _docId: null,
+                where: function(){ return self; },
+                orderBy: function(){ return self; },
+                limit: function(){ return self; },
+                doc: function(id){ self._docId = id || null; return self; },
+                get: function(){
+                    // settings/placeHolderImage
+                    if (self._name === 'settings' && self._docId === 'placeHolderImage'){
+                        return Promise.resolve({ data: function(){ return { image: '{{ asset('images/placeholder.png') }}' }; } });
+                    }
+                    // settings/AdminCommission
+                    if (self._name === 'settings' && self._docId === 'AdminCommission'){
+                        return Promise.resolve({ data: function(){ return { isEnabled: false, commissionType: 'Percent', fix_commission: 0 }; } });
+                    }
+                    // settings/restaurant
+                    if (self._name === 'settings' && self._docId === 'restaurant'){
+                        return Promise.resolve({ data: function(){ return { subscription_model: false }; } });
+                    }
+                    // currencies (provide one active currency)
+                    if (self._name === 'currencies'){
+                        return Promise.resolve({ docs: [ { data: function(){ return { symbol: '₹', symbolAtRight: false, decimal_degits: 2 }; } } ] });
+                    }
+                    // collections that should be empty to avoid legacy math/loops
+                    if (['restaurant_orders','payouts','subscription_history','users','vendor_categories','wallet','favorite_restaurant','booked_table','story','favorite_item'].indexOf(self._name) !== -1){
+                        return Promise.resolve({ empty: true, docs: [], data: function(){ return {}; } });
+                    }
+                    // default: safe shapes for docs[0].data() and snapshot.data()
+                    return Promise.resolve({ empty: true, docs: [ { data: function(){ return {}; } } ], data: function(){ return {}; } });
+                },
+                update: function(){ return Promise.resolve(); },
+                set: function(){ return Promise.resolve(); }
+            };
+            return self;
+        }
+    };
     var ref=database.collection('vendors').where("id","==",id);
     var photo="";
     var vendorAuthor='';

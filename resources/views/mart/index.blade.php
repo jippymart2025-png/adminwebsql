@@ -182,7 +182,7 @@
                                     cellspacing="0" width="100%">
                                     <thead>
                                         <tr>
-                                            <?php if (in_array('mart.delete', json_decode(@session('user_permissions'), true))) { ?>
+                                            <?php $__perms = json_decode(@session('user_permissions'), true) ?: []; if (in_array('marts.delete', $__perms) || in_array('mart.delete', $__perms)) { ?>
                                                 <th class="delete-all"><input type="checkbox" id="is_active"><label
                                                         class="col-3 control-label" for="is_active"><a id="deleteAll"
                                                             class="do_not_delete" href="javascript:void(0)"><i
@@ -272,36 +272,18 @@
 @endsection
 @section('scripts')
 <script type="text/javascript">
-    var database = firebase.firestore();
-    var refData = database.collection('vendors').where('vType', '==', 'mart');
+    // MySQL-based DataTables (Firebase removed)
+    var user_permissions = '<?php echo @session("user_permissions") ?>';
+    user_permissions = Object.values(JSON.parse(user_permissions));
+    var checkDeletePermission = ($.inArray('marts.delete', user_permissions) >= 0) || ($.inArray('mart.delete', user_permissions) >= 0);
 
-    console.log('🚀 Firebase initialized');
-    console.log('🚀 Database object:', database);
-    console.log('🚀 Initial refData:', refData);
-
-    // Test Firebase connection
-    console.log('🧪 Testing Firebase connection...');
-    database.collection('vendors').limit(1).get().then(function(snapshot) {
-        console.log('✅ Firebase connection successful');
-        console.log('✅ Total vendors in collection:', snapshot.size);
-        if (snapshot.size > 0) {
-            console.log('✅ Sample vendor data:', snapshot.docs[0].data());
-        }
-    }).catch(function(error) {
-        console.error('❌ Firebase connection failed:', error);
-    });
-    var currentCurrency = '';
-    var currencyAtRight = false;
-    var refCurrency = database.collection('currencies').where('isActive', '==', true);
-    var decimal_degits = 0;
-    refCurrency.get().then(async function (snapshots) {
-        var currencyData = snapshots.docs[0].data();
-        currentCurrency = currencyData.symbol;
-        currencyAtRight = currencyData.symbolAtRight;
-        if (currencyData.decimal_degits) {
-            decimal_degits = currencyData.decimal_degits;
-        }
-    });
+    // Populate zones from PHP
+    @if(isset($zones))
+        @foreach($zones as $zone)
+            $('.zone_selector').append($('<option></option>').attr('value','{{ $zone->id }}').text('{{ $zone->name }}'));
+        @endforeach
+        $('.zone_selector').prop('disabled', false);
+    @endif
     $('select').change(async function() {
         var zoneValue = $('.zone_selector').val();
         var martTypeValue = $('.mart_type_selector').val();
@@ -315,89 +297,9 @@
             categoryValue: categoryValue
         });
 
-        refData = database.collection('vendors').where('vType', '==', 'mart');
-        console.log('🔄 Reset refData to base query');
-
-        if (zoneValue) {
-            refData = refData.where('zoneId', '==', zoneValue);
-            console.log('🔄 Added zone filter:', zoneValue);
-        }
-        if (martTypeValue == "true") {
-            refData = refData.where('enabledDelivery', '==', true);
-            console.log('🔄 Added delivery filter');
-        }
-        if (businessModelValue) {
-            var vendorSelectedIds = await subscriptionPlanVendorIds(businessModelValue);
-            console.log('🔄 Business model vendor IDs:', vendorSelectedIds);
-            if (vendorSelectedIds.length > 0) {
-                refData = refData.where('id', 'in', vendorSelectedIds);
-                console.log('🔄 Added business model filter');
-            } else{
-                refData = refData.where('id', '==', null);
-                console.log('🔄 Added null business model filter');
-            }
-        }
-        if (categoryValue) {
-            refData = refData.where('categoryID', '==', categoryValue);
-            console.log('🔄 Added category filter:', categoryValue);
-        }
-
-        console.log('🔄 Final refData query:', refData);
         $('#storeTable').DataTable().ajax.reload();
     });
-    async function subscriptionPlanVendorIds(businessModelValue){
-        var vendorIds = []
-        try {
-            const querySnapshot = await database.collection('users').where('subscriptionPlanId', '==', businessModelValue).get();
-            vendorIds = querySnapshot.docs.map(doc => doc.data().vendorID).filter(vendorID => vendorID !== undefined && vendorID !== null && vendorID !== '');
-        } catch (error) {
-            console.error("Error fetching users:", error);
-        }
-        return vendorIds;
-    }
     var append_list = '';
-    var placeholderImage = '';
-    var user_permissions = '<?php echo @session("user_permissions") ?>';
-    user_permissions = Object.values(JSON.parse(user_permissions));
-    var checkDeletePermission = false;
-    if ($.inArray('mart.delete', user_permissions) >= 0) {
-        checkDeletePermission = true;
-    }
-    console.log('🔍 User permissions:', user_permissions);
-    console.log('🔍 Check delete permission:', checkDeletePermission);
-    var userData = [];
-    var vendorData = [];
-    var vendorProducts = [];
-    database.collection('zone').where('publish', '==', true).orderBy('name','asc').get().then(async function (snapshots) {
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            $('.zone_selector').append($("<option></option>")
-                .attr("value", data.id)
-                .text(data.name));
-        })
-    });
-    database.collection('mart_categories').where('publish', '==', true).get().then(async function (snapshots) {
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            $('.category_selector').append($("<option></option>")
-                .attr("value", data.id)
-                .text(data.title));
-        })
-    });
-    database.collection('subscription_plans').where('isEnable', '==', true).orderBy('name', 'asc').get().then(snapshots => {
-        snapshots.docs.forEach(doc => {
-            const { expiryDay, createdAt, id, name, type } = doc.data();
-            if (expiryDay && createdAt) {
-                const expiryDate = new Date(createdAt.toDate());
-                expiryDate.setDate(expiryDate.getDate() + parseInt(expiryDay, 10));
-                if (type !== "free" && expiryDate > new Date()) {
-                    $('.business_model_selector').append($("<option>").attr("value", id).text(name));
-                } else {
-                    $('.business_model_selector').append($("<option>").attr("value", id).text(name));
-                }
-            }
-        });
-    });
     $('.zone_selector').select2({
         placeholder: "{{trans('lang.select_zone')}}",
         minimumResultsForSearch: Infinity,
@@ -424,11 +326,7 @@
             self.select2('close');
         }, 0);
     });
-    var placeholder = database.collection('settings').doc('placeHolderImage');
-    placeholder.get().then(async function (snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
+    var placeholderImage = '{{ asset('images/placeholder.png') }}';
     $(document).ready(function () {
         jQuery("#data-table_processing").show();
         $(document).on('click', '.dt-button-collection .dt-button', function () {
@@ -450,172 +348,29 @@
                 { key: 'createdAt', header: "{{trans('lang.created_at')}}" },
                 { key: 'location', header: "{{trans('lang.location')}}" },
             ],
-            fileName: "{{trans('lang.restaurant_table')}}",
+            fileName: "{{trans('lang.mart_table')}}",
         };
         const table = $('#storeTable').DataTable({
             pageLength: 10,
-            processing: false,
+            processing: true,
             serverSide: true,
-            responsive: true,
-            ajax: async function(data, callback, settings) {
-                const start = data.start;
-                const length = data.length;
-                const searchValue = data.search.value.toLowerCase();
-                const orderColumnIndex = data.order[0].column;
-                const orderDirection = data.order[0].dir;
-                const orderableColumns = (checkDeletePermission) ? ['','title', 'authorName', 'createdAt', '', ''] : ['title', 'authorName', 'createdAt', '', ''];
-                const orderByField = orderableColumns[orderColumnIndex];
-                if (searchValue.length >= 3 || searchValue.length === 0) {
-                    $('#data-table_processing').show();
-                }
-
-                console.log('🔍 Starting mart data fetch...');
-                console.log('🔍 Current refData query:', refData);
-                console.log('🔍 Database object:', database);
-
-                await refData.get().then(async function(querySnapshot) {
-                    console.log('📊 Query result:', querySnapshot);
-                    console.log('📊 Total docs found:', querySnapshot.docs.length);
-                    console.log('📊 Is empty:', querySnapshot.empty);
-
-                    if (querySnapshot.empty) {
-                        console.log('❌ No marts found in Firestore');
-                        $('.mart_count').text(0);
-                        console.error("No data found in Firestore.");
-                        $('#data-table_processing').hide();
-                        callback({
-                            draw: data.draw,
-                            recordsTotal: 0,
-                            recordsFiltered: 0,
-                            filteredData:[],
-                            data: []
-                        });
-                        $('.mart_count').text('00');
-                        $('.mart_active_count').text('00');
-                        $('.mart_inactive_count').text('00');
-                        $('.new_joined_mart').text('00');
-                        return;
-                    }
-
-                    console.log('✅ Found marts! Processing data...');
-                    console.log('📋 First mart data:', querySnapshot.docs[0].data());
-                    let records = [];
-                    let filteredRecords = [];
-                    await Promise.all(querySnapshot.docs.map(async (doc) => {
-                        let childData = doc.data();
-                        childData.phone = (childData.phonenumber != '' && childData.phonenumber != null && childData.phonenumber.slice(0, 1) == '+') ? childData.phonenumber.slice(1) : childData.phonenumber;
-                        childData.id = doc.id;
-                        childData.phonenumber = shortEditNumber(childData.phonenumber);
-                        if (searchValue) {
-                            var date = '';
-                            var time = '';
-                            if (childData.hasOwnProperty("createdAt")) {
-                                try {
-                                    date = childData.createdAt.toDate().toDateString();
-                                    time = childData.createdAt.toDate().toLocaleTimeString('en-US');
-                                } catch (err) {}
-                            }
-                            var createdAt = date + ' ' + time;
-                            if (
-                                (childData.title && childData.title.toLowerCase().toString().includes(searchValue)) ||
-                                (childData.authorName && childData.authorName.toLowerCase().toString().includes(searchValue)) ||
-                                (createdAt && createdAt.toString().toLowerCase().indexOf(searchValue) > -1) ||
-                                (childData.email && childData.email.toLowerCase().toString().includes(searchValue)) ||
-                                (childData.phoneNumber && childData.phoneNumber.toString().includes(searchValue))
-                            ) {
-                                filteredRecords.push(childData);
-                            }
-                        } else {
-                            filteredRecords.push(childData);
-                        }
-                    }));
-                    // Sort records by createdAt (newest first) since we removed Firestore orderBy
-                    filteredRecords.sort((a, b) => {
-                        let aValue = a[orderByField] ? a[orderByField].toString().toLowerCase() : '';
-                        let bValue = b[orderByField] ? b[orderByField].toString().toLowerCase() : '';
-                        if (orderByField === 'createdAt') {
-                            try {
-                                aValue = a[orderByField] ? new Date(a[orderByField].toDate()).getTime() : 0;
-                                bValue = b[orderByField] ? new Date(b[orderByField].toDate()).getTime() : 0;
-                            } catch (err) {
-                                // Fallback for timestamp conversion
-                                aValue = a[orderByField] ? new Date(a[orderByField].seconds * 1000).getTime() : 0;
-                                bValue = b[orderByField] ? new Date(b[orderByField].seconds * 1000).getTime() : 0;
-                            }
-                        }
-                        if (orderDirection === 'asc') {
-                            return (aValue > bValue) ? 1 : -1;
-                        } else {
-                            return (aValue < bValue) ? 1 : -1;
-                        }
-                    });
-                    const totalRecords = filteredRecords.length;
-                    let active_rest = 0;
-                    let inactive_rest = 0;
-                    let new_joined_rest = 0;
-                    const today = new Date().setHours(0, 0, 0, 0);
-                    await Promise.all(filteredRecords.map(async (childData) => {
-                        var isActive = false;
-                        if (childData.author) {
-                            const user_id = childData.author;
-                            isActive = await vendorStatus(user_id);
-                        }
-                        if (isActive) {
-                            active_rest += 1;
-                        } else {
-                            inactive_rest += 1;
-                        }
-                        if (childData.createdAt && new Date(childData.createdAt.seconds * 1000).setHours(0, 0, 0, 0) === today) {
-                            new_joined_rest += 1;
-                        }
-                    }));
-                    $('.mart_count').text(totalRecords);
-                    $('.mart_active_count').text(active_rest);
-                    $('.mart_inactive_count').text(inactive_rest);
-                    $('.new_joined_mart').text(new_joined_rest);
-                    const paginatedRecords = filteredRecords.slice(start, start + length);
-                    await Promise.all(paginatedRecords.map(async (childData) => {
-                        var getData = await buildHTML(childData);
-                        records.push(getData);
-                    }));
-                    $('#data-table_processing').hide();
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: totalRecords,
-                        recordsFiltered: totalRecords,
-                        filteredData: filteredRecords,
-                        data: records
-                    });
-                }).catch(function(error) {
-                    console.error("❌ Error fetching data from Firestore:", error);
-                    console.error("❌ Error details:", error.message);
-                    console.error("❌ Error stack:", error.stack);
-                    $('#data-table_processing').hide();
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: 0,
-                        recordsFiltered: 0,
-                        filteredData: [],
-                        data: []
-                    });
-                });
+            responsive: false,
+            autoWidth: false,
+            deferRender: true,
+            ajax: {
+                url: '{{ route('marts') }}',
+                type: 'GET',
+                data: function(d){ d.zone_id = $('.zone_selector').val(); },
+                dataSrc: function(json){ $('.mart_count').text(json.recordsFiltered || 0); $('#data-table_processing').hide(); return json.data || []; },
+                error: function(){ $('#data-table_processing').hide(); }
             },
-            order: (checkDeletePermission) ? [[4, 'desc']] : [[3, 'desc']],
+            // Order by Date column (index differs when delete checkbox column exists)
+            order: (checkDeletePermission) ? [[4,'desc']] : [[3,'desc']],
             columnDefs: [
-                {
-                    targets: (checkDeletePermission) ? 4 : 3,
-                    type: 'date',
-                    render: function(data) {
-                        return data;
-                    }
-                },
-                { orderable: false, targets: (checkDeletePermission) ? [0, 4, 5] : [3, 4] },
+                { targets: (checkDeletePermission?4:3), type:'date', render:function(data){return data;} },
+                { orderable:false, targets: (checkDeletePermission? [0,5,6] : [4,5]) }
             ],
-            "language": {
-                "zeroRecords": "{{trans('lang.no_record_found')}}",
-                "emptyTable": "{{trans('lang.no_record_found')}}",
-                "processing": ""
-            },
+            language: { zeroRecords: "{{trans('lang.no_record_found')}}", emptyTable: "{{trans('lang.no_record_found')}}", processing: "" },
             dom: 'lfrtipB',
             buttons: [
                 {
@@ -623,36 +378,16 @@
                     text: '<i class="mdi mdi-cloud-download"></i> Export as',
                     className: 'btn btn-info',
                     buttons: [
-                        {
-                            extend: 'excelHtml5',
-                            text: 'Export Excel',
-                            action: function (e, dt, button, config) {
-                                exportData(dt, 'excel',fieldConfig);
-                            }
-                        },
-                        {
-                            extend: 'pdfHtml5',
-                            text: 'Export PDF',
-                            action: function (e, dt, button, config) {
-                                exportData(dt, 'pdf',fieldConfig);
-                            }
-                        },
-                        {
-                            extend: 'csvHtml5',
-                            text: 'Export CSV',
-                            action: function (e, dt, button, config) {
-                                exportData(dt, 'csv',fieldConfig);
-                            }
-                        }
+                        { extend: 'excelHtml5', text: 'Export Excel', action: function (e, dt) { exportData(dt, 'excel', fieldConfig); } },
+                        { extend: 'pdfHtml5', text: 'Export PDF', action: function (e, dt) { exportData(dt, 'pdf', fieldConfig); } },
+                        { extend: 'csvHtml5', text: 'Export CSV', action: function (e, dt) { exportData(dt, 'csv', fieldConfig); } }
                     ]
                 }
             ],
             initComplete: function() {
                 $(".dataTables_filter").append($(".dt-buttons").detach());
                 $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete','new-password').val('');
-                $('.dataTables_filter label').contents().filter(function() {
-                    return this.nodeType === 3;
-                }).remove();
+                $('.dataTables_filter label').contents().filter(function() { return this.nodeType === 3; }).remove();
             }
         });
         function debounce(func, wait) {
@@ -665,7 +400,6 @@
         }
         $('#search-input').on('input', debounce(function () {
             const searchValue = $(this).val();
-            alert(searchValue);
             if (searchValue.length >= 3) {
                 $('#data-table_processing').show();
                 table.search(searchValue).draw();
@@ -759,16 +493,7 @@
 
         return html;
     }
-    async function vendorStatus(id) {
-        let status = true;
-        await database.collection('users').doc(id).get().then((snapshots) => {
-            let data = snapshots.data();
-            if (data) {
-                status = data.active;
-            }
-        });
-        return status;
-    }
+    // vendorStatus removed (Firebase)
     /*async function getTotalProduct(id) {
         let productSnapshots = await database.collection('vendor_products').where('vendorID', '==', id).get();
         return productSnapshots.docs.length;

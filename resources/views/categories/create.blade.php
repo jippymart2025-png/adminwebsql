@@ -1,4 +1,4 @@
-@extends('layouts.app') 
+@extends('layouts.app')
 @section('content')
     <div class="page-wrapper">
         <div class="row page-titles">
@@ -95,156 +95,39 @@
 @endsection
 @section('scripts')
 <script>
-    var database = firebase.firestore();
-    var ref = database.collection('vendor_categories');
-    var photo = "";
-    var fileName='';
-    var id_category = "<?php echo uniqid();?>";
-    var category_length = 1;
-    var placeholderImage = '';
-    var placeholder = database.collection('settings').doc('placeHolderImage');
-    var ref_review_attributes = database.collection('review_attributes');
-    placeholder.get().then(async function (snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
-    $(document).ready(function () {
-        jQuery("#data-table_processing").show();
-        ref.get().then(async function (snapshots) {
-            category_length = snapshots.size + 1;
-            jQuery("#data-table_processing").hide();
-        })
-        $(".save-setting-btn").click(async function () {
+    $(document).ready(function(){
+        $(".save-setting-btn").on('click', function(){
             var title = $(".cat-name").val();
             var description = $(".category_description").val();
             var item_publish = $("#item_publish").is(":checked");
             var show_in_homepage = $("#show_in_homepage").is(":checked");
             var review_attributes = [];
-            $('#review_attributes input').each(function () {
-                if ($(this).is(':checked')) {
-                    review_attributes.push($(this).val());
-                }
-            });
-            if (title == '') {
-                $(".error_top").show();
-                $(".error_top").html("");
-                $(".error_top").append("<p>{{trans('lang.enter_cat_title_error')}}</p>");
-                window.scrollTo(0, 0);
-            } else {
-                var count_vendor_categories = 0;
-                    if (show_in_homepage) {
-                        await database.collection('vendor_categories').where('show_in_homepage', "==", true).get().then(async function (snapshots) {
-                    count_vendor_categories = snapshots.docs.length;
-                    });
-                    }
-                    if (count_vendor_categories >= 5) {
-                alert("Already 5 categories are active for show in homepage..");
-                return false;
-            } else {
-				jQuery("#data-table_processing").show();
-              storeImageData().then(IMG => {
-                database.collection('vendor_categories').doc(id_category).set({
-                    'id': id_category,
-                    'title': title,
-                    'description': description,
-                    'photo': IMG,
-                    'review_attributes': review_attributes,
-                    'publish': item_publish,
-                    'show_in_homepage': show_in_homepage,
-                }).then(async function (result) {
-                    console.log('✅ Category saved successfully, now logging activity...');
-                    try {
-                        if (typeof logActivity === 'function') {
-                            console.log('🔍 Calling logActivity for category creation...');
-                            await logActivity('categories', 'created', 'Created new category: ' + title);
-                            console.log('✅ Activity logging completed successfully');
-                        } else {
-                            console.error('❌ logActivity function is not available');
-                        }
-                    } catch (error) {
-                        console.error('❌ Error calling logActivity:', error);
-                    }
-                    jQuery("#data-table_processing").hide();
-                    window.location.href = '{{ route("categories")}}';
-                });
-                }).catch(function (error) {
-				jQuery("#data-table_processing").hide();
-                $(".error_top").show();
-                $(".error_top").html("");
-                $(".error_top").append("<p>" + error + "</p>");
-            })
-             }
+            $('#review_attributes input').each(function(){ if($(this).is(':checked')) review_attributes.push($(this).val()); });
+            if(!title){
+                $(".error_top").show().html("<p>{{trans('lang.enter_cat_title_error')}}</p>");
+                window.scrollTo(0,0); return;
             }
+            var fd = new FormData();
+            fd.append('title', title);
+            fd.append('description', description);
+            fd.append('item_publish', item_publish ? 1 : 0);
+            fd.append('show_in_homepage', show_in_homepage ? 1 : 0);
+            review_attributes.forEach(function(v){ fd.append('review_attributes[]', v); });
+            if($('#category_image')[0].files[0]){ fd.append('photo', $('#category_image')[0].files[0]); }
+            $.ajax({
+                url: '{{ route('categories.store') }}',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                data: fd,
+                processData: false,
+                contentType: false
+            }).done(function(){ window.location.href='{{ route('categories') }}'; })
+              .fail(function(xhr){
+                var msg = 'Failed to save';
+                if(xhr.responseJSON && xhr.responseJSON.message){ msg = xhr.responseJSON.message; }
+                $(".error_top").show().html('<p>'+msg+'</p>');
+              });
         });
-    });
-    ref_review_attributes.get().then(async function (snapshots) {
-        var ra_html = '';
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            ra_html += '<div class="form-check width-100">';
-            ra_html += '<input type="checkbox" id="review_attribute_' + data.id + '" value="' + data.id + '">';
-            ra_html += '<label class="col-3 control-label" for="review_attribute_' + data.id + '">' + data.title + '</label>';
-            ra_html += '</div>';
-        });
-        $('#review_attributes').html(ra_html);
-    });
-    var storageRef = firebase.storage().ref('images');
-    async function storeImageData() {
-        var newPhoto = '';
-        try {
-            photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-            var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', {contentType: 'image/jpg'});
-            var downloadURL = await uploadTask.ref.getDownloadURL();
-            newPhoto = downloadURL;
-            photo = downloadURL;
-        } catch (error) {
-            console.log("ERR ===", error);
-        }
-        return newPhoto;
-    }
-    function handleFileSelect(evt) {
-        var f = evt.target.files[0];
-        var reader = new FileReader();
-        reader.onload = (function (theFile) {
-            return function (e) {
-                var filePayload = e.target.result;
-                var val = $('#category_image').val().toLowerCase();
-                var ext = val.split('.')[1];
-                var docName = val.split('fakepath')[1];
-                var filename = $('#category_image').val().replace(/C:\\fakepath\\/i, '')
-                var timestamp = Number(new Date());
-                var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-                var uploadTask = storageRef.child(filename).put(theFile);
-                uploadTask.on('state_changed', function (snapshot) {
-                    var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                }, function (error) {
-                }, function () {
-                    uploadTask.snapshot.ref.getDownloadURL().then(function (downloadURL) {
-                        jQuery("#uploding_image").text("Upload is completed");
-                        photo = downloadURL;
-                        $(".cat_image").empty();
-                        $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-                    });
-                });
-            };
-        })(f);
-        reader.readAsDataURL(f);
-    }
-    //upload image with compression
-    $("#category_image").resizeImg({
-        callback: function(base64str) {
-            var val = $('#category_image').val().toLowerCase();
-            var ext = val.split('.')[1];
-            var docName = val.split('fakepath')[1];
-            var filename = $('#category_image').val().replace(/C:\\fakepath\\/i, '')
-            var timestamp = Number(new Date());
-            var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-            photo = base64str;
-            fileName=filename;
-            $(".cat_image").empty();
-            $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-            $("#category_image").val('');
-        }
     });
 </script>
 @endsection

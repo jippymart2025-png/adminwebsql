@@ -107,6 +107,13 @@ Route::get('/auth/impersonate', function () {
 // Mart Routes
 Route::middleware(['permission:marts,marts'])->group(function () {
     Route::get('/marts', [App\Http\Controllers\MartController::class, 'index'])->name('marts');
+    Route::get('/marts/json/{id}', [App\Http\Controllers\MartController::class, 'showJson'])->name('marts.json');
+});
+Route::middleware(['permission:marts,marts.create'])->group(function () {
+    Route::post('/marts', [App\Http\Controllers\MartController::class, 'store'])->name('marts.store');
+});
+Route::middleware(['permission:marts,marts.edit'])->group(function () {
+    Route::post('/marts/{id}', [App\Http\Controllers\MartController::class, 'update'])->name('marts.update');
 });
 Route::middleware(['permission:marts,marts.create'])->group(function () {
     Route::get('/marts/create', [App\Http\Controllers\MartController::class, 'create'])->name('marts.create');
@@ -140,6 +147,9 @@ Route::middleware(['permission:coupons,coupons.create'])->group(function () {
 
 Route::middleware(['permission:foods,foods'])->group(function () {
     Route::get('/foods', [App\Http\Controllers\FoodController::class, 'index'])->name('foods');
+    Route::get('/foods/data', [App\Http\Controllers\FoodController::class, 'data'])->name('foods.data');
+    Route::get('/foods/options', [App\Http\Controllers\FoodController::class, 'options'])->name('foods.options');
+    Route::get('/foods/json/{id}', [App\Http\Controllers\FoodController::class, 'showJson'])->name('foods.json');
 });
 
 // Food import routes - must be before /foods/{id} route to avoid conflicts
@@ -153,10 +163,13 @@ Route::middleware(['permission:foods,foods'])->group(function () {
 Route::middleware(['permission:foods,foods.edit'])->group(function () {
     Route::get('/foods/edit/{id}', [App\Http\Controllers\FoodController::class, 'edit'])->name('foods.edit');
     Route::patch('/foods/inline-update/{id}', [App\Http\Controllers\FoodController::class, 'inlineUpdate'])->name('foods.inlineUpdate');
+    Route::post('/foods/{id}', [App\Http\Controllers\FoodController::class, 'update'])->name('foods.update');
+    Route::post('/foods/{id}/toggle', [App\Http\Controllers\FoodController::class, 'togglePublish'])->name('foods.toggle');
 });
 Route::middleware(['permission:foods,foods.create'])->group(function () {
     Route::get('/food/create', [App\Http\Controllers\FoodController::class, 'create'])->name('foods.create');
     Route::get('/food/create/{id}', [App\Http\Controllers\FoodController::class, 'create']);
+    Route::post('/foods', [App\Http\Controllers\FoodController::class, 'store'])->name('foods.store');
 
 });
 
@@ -213,14 +226,21 @@ Route::middleware(['permission:orders,vendors.orderprint'])->group(function () {
 Route::middleware(['permission:category,categories'])->group(function () {
 
     Route::get('/categories', [App\Http\Controllers\CategoryController::class, 'index'])->name('categories');
+    Route::get('/categories/data', [App\Http\Controllers\CategoryController::class, 'data'])->name('categories.data');
 });
 Route::middleware(['permission:category,categories.edit'])->group(function () {
     Route::get('/categories/edit/{id}', [App\Http\Controllers\CategoryController::class, 'edit'])->name('categories.edit');
+    Route::post('/categories/{id}', [App\Http\Controllers\CategoryController::class, 'update'])->name('categories.update');
 
 });
 Route::middleware(['permission:category,categories.create'])->group(function () {
     Route::get('/categories/create', [App\Http\Controllers\CategoryController::class, 'create'])->name('categories.create');
+    Route::post('/categories', [App\Http\Controllers\CategoryController::class, 'store'])->name('categories.store');
 
+});
+Route::middleware(['permission:category,categories.delete'])->group(function () {
+    Route::get('/categories/delete/{id}', [App\Http\Controllers\CategoryController::class, 'delete'])->name('categories.delete');
+    Route::post('/categories/{id}/toggle', [App\Http\Controllers\CategoryController::class, 'togglePublish'])->name('categories.toggle');
 });
 Route::post('/categories/import', [CategoryController::class, 'import'])->name('categories.import');
 Route::get('/categories/download-template', [CategoryController::class, 'downloadTemplate'])->name('categories.download-template');
@@ -264,15 +284,19 @@ Route::get('/cuisines/download-template', [CuisineController::class, 'downloadTe
 
 Route::middleware(['permission:cuisines,cuisines'])->group(function () {
     Route::get('/cuisines', [App\Http\Controllers\CuisineController::class, 'index'])->name('cuisines');
+    Route::get('/cuisines/data', [App\Http\Controllers\CuisineController::class, 'data'])->name('cuisines.data');
 });
 Route::middleware(['permission:cuisines,cuisines.edit'])->group(function () {
     Route::get('/cuisines/edit/{id}', [App\Http\Controllers\CuisineController::class, 'edit'])->name('cuisines.edit');
+    Route::post('/cuisines/{id}', [App\Http\Controllers\CuisineController::class, 'update'])->name('cuisines.update');
 });
 Route::middleware(['permission:cuisines,cuisines.create'])->group(function () {
     Route::get('/cuisines/create', [App\Http\Controllers\CuisineController::class, 'create'])->name('cuisines.create');
+    Route::post('/cuisines', [App\Http\Controllers\CuisineController::class, 'store'])->name('cuisines.store');
 });
 Route::middleware(['permission:cuisines,cuisines.delete'])->group(function () {
     Route::get('/cuisines/delete/{id}', [App\Http\Controllers\CuisineController::class, 'delete'])->name('cuisines.delete');
+    Route::post('/cuisines/{id}/toggle', [App\Http\Controllers\CuisineController::class, 'togglePublish'])->name('cuisines.toggle');
 });
 
 Route::middleware(['permission:promotions,promotions'])->group(function () {
@@ -655,6 +679,9 @@ Route::middleware(['permission:cms,cms.create'])->group(function () {
 });
 Route::middleware(['permission:reports,report.index'])->group(function () {
     Route::get('report/{type}', [App\Http\Controllers\ReportController::class, 'index'])->name('report.index');
+Route::get('/reports/sales/options', [App\Http\Controllers\ReportController::class, 'salesOptions'])->name('reports.sales.options');
+Route::post('/reports/sales/data', [App\Http\Controllers\ReportController::class, 'salesData'])->name('reports.sales.data');
+
 });
 
 Route::middleware(['permission:tax,tax'])->group(function () {

@@ -100,13 +100,24 @@
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css"/>
     <script>
-        var database = firebase.firestore();
-        var refCurrency = database.collection('currencies').where('isActive', '==', true).limit('1');
-        var restaurantRef = database.collection('vendors').orderBy('createdAt').orderBy('title');
-        var driverUserRef = database.collection('users').where('role', '==', 'driver').orderBy('createdAt').orderBy('firstName');
-        var customerRef = database.collection('users').where('role', '==', 'customer').orderBy('createdAt').orderBy('firstName');
-        var categoryRef = database.collection('vendor_categories').orderBy('title');
-        var paymentMethodRef = database.collection('settings').doc('payment');
+        // Load options from SQL
+        var currentCurrency = '';
+        var decimal_degits = 2;
+        var symbolAtRight = false;
+        function loadOptions(){
+            return $.getJSON('{{ route("reports.sales.options") }}').then(function(resp){
+                try{
+                    var c = resp.currency || {};
+                    currentCurrency = c.symbol || '₹';
+                    decimal_degits = c.decimal_degits || 2;
+                    symbolAtRight = !!c.symbolAtRight;
+                }catch(e){}
+                (resp.vendors||[]).forEach(function(v){ $('.restaurant').append('<option value="'+v.id+'">'+(v.title||'')+'</option>'); });
+                (resp.drivers||[]).forEach(function(d){ $('.driver').append('<option value="'+d.id+'">'+(d.firstName||'')+' '+(d.lastName||'')+'</option>'); });
+                (resp.customers||[]).forEach(function(u){ $('.customer').append('<option value="'+u.id+'">'+(u.firstName||'')+' '+(u.lastName||'')+'</option>'); });
+                (resp.categories||[]).forEach(function(c){ $('.category').append('<option value="'+c.id+'">'+(c.title||c.id)+'</option>'); });
+            });
+        }
         setDate();
         function setDate() {
             var start = moment().subtract(29, 'days');
@@ -128,55 +139,8 @@
             }, cb);
             cb(start, end);
         }
-        var decimal_degits = 0;
-        var symbolAtRight = false;
-        var currentCurrency = '';
-        refCurrency.get().then(async function (snapshots) {
-            var currencyData = snapshots.docs[0].data();
-            currentCurrency = currencyData.symbol;
-            decimal_degits = currencyData.decimalDigits;
-            if (currencyData.symbolAtRight) {
-                symbolAtRight = true;
-            }
-        });
-        categoryRef.get().then(function (snapShots) {
-            if (snapShots.docs.length > 0) {
-                snapShots.docs.forEach((listval) => {
-                    var data = listval.data();
-                    $('.category').append('<option value="' + data.id + '">' + data.title + '</option>');
-                });
-            }
-        });
-        paymentMethodRef.get().then(function (snapShots) {
-            var data = snapShots.data();
-            Object.keys(data).forEach((listval) => {
-                $('.payment_method').append($("<option value='" + data[listval].name + "'>" + data[listval].name + "</option>"));
-            });
-        });
-        customerRef.get().then(function (snapShots) {
-            if (snapShots.docs.length > 0) {
-                snapShots.docs.forEach((listval) => {
-                    var data = listval.data();
-                    $('.customer').append('<option value="' + data.id + '">' + data.firstName + ' ' + data.lastName + '</option>');
-                });
-            }
-        });
-        restaurantRef.get().then(function (snapShots) {
-            if (snapShots.docs.length > 0) {
-                snapShots.docs.forEach((listval) => {
-                    var data = listval.data();
-                    $('.restaurant').append('<option value="' + data.id + '">' + data.title + '</option>');
-                });
-            }
-        });
-        driverUserRef.get().then(function (snapShots) {
-            if (snapShots.docs.length > 0) {
-                snapShots.docs.forEach((listval) => {
-                    var data = listval.data();
-                    $('.driver').append('<option value="' + data.id + '">' + data.firstName + ' ' + data.lastName + '</option>');
-                });
-            }
-        });
+        // Initialize options
+        loadOptions();
         async function generateReport(orderData, headers, fileFormat) {
             if ((fileFormat == "pdf") ? document.title = "sales-report" : "") ;
             objectExporter({
@@ -191,63 +155,26 @@
                 documentTitle: '',
             });
         }
-        async function getReportData(orderSnapshots, fileFormat) {
-            var orderData = [];
-            await Promise.all(orderSnapshots.docs.map(async (order) => {
-                var orderObj = order.data();
-                var orderId = orderObj.id;
-                var finalOrderObject = {};
-                var driverData = ((orderObj.driver && orderObj.driver != null) ? orderObj.driver : '');
-                var userData = ((orderObj.author && orderObj.author != null) ? orderObj.author : '');
-                var vendorData = ((orderObj.vendor && orderObj.vendor != null) ? orderObj.vendor : '');
-                var date = orderObj.createdAt.toDate();
-                var distanceType = ((orderObj.distanceType && orderObj.distanceType != "" && orderObj.distanceType != null) ? orderObj.distanceType : "");
-                finalOrderObject['restaurantorders ID'] = orderId;
-                finalOrderObject['Restaurant Name'] = ((vendorData.title) ? vendorData.title : "");
-                finalOrderObject['Driver Name'] = ((driverData.firstName) ? ((driverData.lastName) ? driverData.firstName + ' ' + driverData.lastName : driverData.firstName) : "");
-                finalOrderObject['Driver Email'] = ((driverData.email) ? shortEmail(driverData.email) : "");
-                if(driverData.phoneNumber!="" && driverData.phoneNumber != null){
-                    var phoneNumber = shortEditNumber(driverData.phoneNumber);
-                }
-                else{
-                    var phoneNumber = "";
-                }
-                finalOrderObject['Driver Phone'] = phoneNumber;
-                finalOrderObject['User Name'] = ((userData.firstName) ? ((userData.lastName) ? userData.firstName + ' ' + userData.lastName : userData.firstName) : "");
-                finalOrderObject['User Email'] = ((userData.email) ? shortEmail(userData.email) : "");
-                if(userData.phoneNumber!="" && userData.phoneNumber != null){
-                    var phoneNo = shortEditNumber(userData.phoneNumber);
-                }
-                else{
-                    var phoneNo = "";
-                }
-                finalOrderObject['User Phone'] = phoneNo;
-                finalOrderObject['Date'] = moment(date).format('ddd MMM DD YYYY h:mm:ss A');
-                finalOrderObject['Category'] = ((vendorData.categoryTitle) ? vendorData.categoryTitle : "");
-                finalOrderObject['Payment Method'] = orderObj.payment_method;
-                var total_amount = getProductsTotal(orderObj);
-                var adminCommission = 0;
-                if (orderObj.adminCommission != undefined && orderObj.adminCommissionType != undefined) {
-                    if (orderObj.adminCommissionType == "Percent") {
-                        adminCommission = (total_amount * parseFloat(orderObj.adminCommission)) / 100;
-                    } else {
-                        adminCommission = parseFloat(orderObj.adminCommission);
-                    }
-                } else if (orderObj.adminCommission != undefined) {
-                    adminCommission = parseFloat(orderObj.adminCommission);
-                }
-                if (symbolAtRight) {
-                    total_amount = parseFloat(total_amount).toFixed(decimal_degits) + "" + currentCurrency;
-                    adminCommission = parseFloat(adminCommission).toFixed(decimal_degits) + "" + currentCurrency;
-                } else {
-                    total_amount = currentCurrency + "" + parseFloat(total_amount).toFixed(decimal_degits);
-                    adminCommission = currentCurrency + "" + parseFloat(adminCommission).toFixed(decimal_degits);
-                }
-                finalOrderObject['Total'] = (total_amount);
-                finalOrderObject['Admin Commission'] = adminCommission;
-                orderData.push(finalOrderObject);
-            }));
-            return orderData;
+        function formatCurrency(v){
+            v = parseFloat(v || 0).toFixed(decimal_degits);
+            return symbolAtRight ? (v + currentCurrency) : (currentCurrency + v);
+        }
+        function mapRow(r){
+            return {
+                'restaurantorders ID': r.order_id,
+                'Restaurant Name': r.restaurant,
+                'Driver Name': r.driver_name,
+                'Driver Email': (r.driver_email||''),
+                'Driver Phone': (r.driver_phone||''),
+                'User Name': r.user_name,
+                'User Email': (r.user_email||''),
+                'User Phone': (r.user_phone||''),
+                'Date': r.date,
+                'Category': r.category,
+                'Payment Method': r.payment_method,
+                'Total': formatCurrency(r.total||0),
+                'Admin Commission': formatCurrency(r.admin_commission||0)
+            };
         }
         function getProductsTotal(snapshotsProducts) {
             var adminCommission = snapshotsProducts.adminCommission;
@@ -365,56 +292,38 @@
                 window.scrollTo(0, 0);
             } else {
                 jQuery("#overlay").show();
-                var ordersRef = database.collection('restaurant_orders').where('status', 'in', ["restaurantorders Completed"]).orderBy('createdAt', 'desc');
-                if (restaurant != "") {
-                    ordersRef = ordersRef.where('vendorID', '==', restaurant)
-                }
-                if (driver != "") {
-                    ordersRef = ordersRef.where('driverID', '==', driver)
-                }
-                if (customer != "") {
-                    ordersRef = ordersRef.where('authorID', '==', customer)
-                }
-                if (category != "") {
-                    ordersRef = ordersRef.where('vendor.categoryID', '==', category)
-                }
-                if (start_date != "") {
-                    ordersRef = ordersRef.where('createdAt', '>=', start_date)
-                }
-                if (end_date != "") {
-                    ordersRef = ordersRef.where('createdAt', '<=', end_date)
-                }
-                ordersRef.get().then(async function (orderSnapshots) {
-                    if (orderSnapshots.docs.length > 0) {
-                        var reportData = await getReportData(orderSnapshots, fileFormat);
-                        generateReport(reportData, headers, fileFormat);
-
-                        // Log report generation
-                        await logActivity('reports', 'generated', 'Generated sales report in ' + fileFormat.toUpperCase() + ' format');
-
-                        jQuery("#overlay").hide();
-                        setDate();
-                        $('.file_format').val('').trigger('change');
-                        $('.driver').val('').trigger('change');
-                        $('.customer').val('').trigger('change');
-                        $('.service').val('').trigger('change');
-                        $('.status').val('').trigger('change');
-                        $('.payment_method').val('').trigger('change');
-                        $('.payment_status').val('').trigger('change');
-                    } else {
-                        jQuery("#overlay").hide();
-                        setDate();
-                        $(".error_top").show();
-                        $(".error_top").html("");
-                        $(".error_top").append("<p>{{trans('lang.not_found_data_error')}}</p>");
-                        window.scrollTo(0, 0);
+                $.ajax({
+                    url: '{{ route("reports.sales.data") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    data: {
+                        vendor_id: restaurant,
+                        driver_id: driver,
+                        customer_id: customer,
+                        category_id: category,
+                        start_date: start_date.toISOString().slice(0,19).replace('T',' '),
+                        end_date: end_date.toISOString().slice(0,19).replace('T',' ')
                     }
-                }).catch((error) => {
-                    jQuery("#overlay").show();
-                    console.log("Error getting documents: ", error);
-                    $(".error_top").show();
-                    $(".error_top").html(error);
-                    window.scrollTo(0, 0);
+                }).done(function(resp){
+                    var rows = (resp && resp.rows) ? resp.rows : [];
+                    if (rows.length){
+                        var reportData = rows.map(mapRow);
+                        generateReport(reportData, headers, fileFormat);
+                    } else {
+                        $(".error_top").show().html("<p>{{trans('lang.not_found_data_error')}}</p>");
+                    }
+                }).fail(function(xhr){
+                    $(".error_top").show().text('Failed to load report');
+                }).always(function(){
+                    jQuery("#overlay").hide();
+                    setDate();
+                    $('.file_format').val('').trigger('change');
+                    $('.driver').val('').trigger('change');
+                    $('.customer').val('').trigger('change');
+                    $('.service').val('').trigger('change');
+                    $('.status').val('').trigger('change');
+                    $('.payment_method').val('').trigger('change');
+                    $('.payment_status').val('').trigger('change');
                 });
             }
         });

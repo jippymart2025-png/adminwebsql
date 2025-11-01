@@ -70,7 +70,7 @@
                                             <input type="checkbox" id="show_in_homepage">
                                             <label class="col-3 control-label" for="show_in_homepage">{{trans('lang.show_in_home')}}</label>
                                             <div class="form-text text-muted w-50">{{trans('lang.show_in_home_desc')}}<span id="forsection"></span></div>
-                                        </div>            
+                                        </div>
                                     </fieldset>
                                 </div>
                                 <div role="tabpanel" class="tab-pane" id="review_attributes">
@@ -92,230 +92,51 @@
 @section('scripts')
 <script>
 var id = "<?php echo $id;?>";
-if (!id) {
-    $(document).ready(function () {
-        $(".error_top").show();
-        $(".error_top").html("");
-        $(".error_top").append("<p>Error: Cuisine ID is missing. Unable to load data.</p>");
-        jQuery("#data-table_processing").hide();
-    });
-    throw new Error("Cuisine ID is missing");
-}
-var database = firebase.firestore();
-var ref = database.collection('vendor_cuisines').doc(id);
-var photo = "";
-var fileName="";
-var catImageFile="";
-var placeholderImage = '';
-var placeholder = database.collection('settings').doc('placeHolderImage');
-var ref_review_attributes = database.collection('review_attributes');
-var cuisines = '';
-    var storageRef = firebase.storage().ref('images');
-    var storage = firebase.storage();
-    
-    // Random review generation functions
-    function generateRandomReviewCount() {
-        // Generate random number between 70 and 130
-        return Math.floor(Math.random() * (130 - 70 + 1)) + 70;
+var cuisine = {!! json_encode($cuisine ?? null) !!};
+$(document).ready(function(){
+    if(!cuisine){
+        $(".error_top").show().html('<p>Error: Cuisine not found.</p>');
+    } else {
+        $(".cat-name").val(cuisine.title || '');
+        $(".cuisines_description").val(cuisine.description || '');
+        if(cuisine.photo){
+            $(".cat_image").append('<img class="rounded" style="width:50px" src="'+cuisine.photo+'" alt="image">');
+        }
+        if(parseInt(cuisine.publish)) $("#item_publish").prop('checked', true);
+        if(parseInt(cuisine.show_in_homepage)) $("#show_in_homepage").prop('checked', true);
     }
-    
-    function generateRandomReviewSum() {
-        // Generate random number between 4.8 and 5.0 with 1 decimal place
-        return (Math.random() * (5.0 - 4.8) + 4.8).toFixed(1);
-    }
-    
-    placeholder.get().then(async function (snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
-$(document).ready(function () {
-    jQuery("#data-table_processing").show();
-    ref.get().then(async function (doc) {
-        if (!doc.exists) {
-            $(".error_top").show();
-            $(".error_top").html("");
-            $(".error_top").append("<p>Error: Cuisine not found for the given ID.</p>");
-            jQuery("#data-table_processing").hide();
-            return;
-        }
-        cuisines = doc.data();
-        $(".cat-name").val(cuisines.title);
-        $(".cuisines_description").val(cuisines.description);
-        if (cuisines.photo != '' && cuisines.photo != null) {
-              photo = cuisines.photo;
-              catImageFile=cuisines.photo;
-              $(".cat_image").append('<img onerror="this.onerror=null;this.src=\'' + placeholderImage + '\'" class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-        } else {
-            $(".cat_image").append('<img class="rounded" style="width:50px" src="' + placeholderImage + '" alt="image">');
-        }
-        if (cuisines.publish) {
-            $("#item_publish").prop('checked', true);
-        }
-        if (cuisines.show_in_homepage) {
-            $("#show_in_homepage").prop('checked', true);
-        }
-        jQuery("#data-table_processing").hide();
-    })
-    ref_review_attributes.get().then(async function (snapshots) {
-        var ra_html = '';
-        var reviewAttributesArr = Array.isArray(cuisines.review_attributes) ? cuisines.review_attributes : [];
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            ra_html += '<div class="form-check width-100" >';
-            var checked = $.inArray(data.id, reviewAttributesArr) !== -1 ? 'checked' : '';
-            ra_html += '<input type="checkbox" id="review_attribute_' + data.id + '" value="' + data.id + '" ' + checked + '>';
-            ra_html += '<label class="col-3 control-label" for="review_attribute_' + data.id + '">' + data.title + '</label>';
-            ra_html += '</div>';
-        })
-        $('#review_attributes').html(ra_html);
-    })
-    $(".edit-setting-btn").click(async function () {
+    $(".edit-setting-btn").on('click', function(){
         var title = $(".cat-name").val();
         var description = $(".cuisines_description").val();
         var item_publish = $("#item_publish").is(":checked");
         var show_in_homepage = $("#show_in_homepage").is(":checked");
         var review_attributes = [];
-        $('#review_attributes input').each(function () {
-            if ($(this).is(':checked')) {
-                review_attributes.push($(this).val());
-            }
-        });
-        if (title == '') {
-            $(".error_top").show();
-            $(".error_top").html("");
-            $(".error_top").append("<p>{{trans('lang.enter_cat_title_error')}}</p>");
-            window.scrollTo(0, 0);
-        } else {
-            var count_vendor_categories = 0;
-            if (show_in_homepage) {
-                await database.collection('vendor_cuisines').where('show_in_homepage', "==", true).where("id", "!=", id).get().then(async function (snapshots) {
-                    count_vendor_categories = snapshots.docs.length;
-                });
-            }
-            if (count_vendor_categories >= 5) {
-                alert("Already 5 categories are active for show in homepage..");
-                return false;
-            } else {
-            jQuery("#data-table_processing").show();
-            storeImageData().then(IMG => {
-            database.collection('vendor_cuisines').doc(id).update({
-                'title': title,
-                'description': description,
-                'photo': IMG,
-                'review_attributes': review_attributes,
-                'publish': item_publish,
-                'show_in_homepage': show_in_homepage,
-                // Review fields - Generate random realistic values
-                'reviewCount': generateRandomReviewCount().toString(), // Random review count (70-130)
-                'reviewSum': generateRandomReviewSum().toString(), // Random review sum (4.8-5.0)
-                            }).then(async function (result) {
-                    console.log('✅ Cuisine updated successfully, now logging activity...');
-                    
-                    // Log the activity with error handling and await the Promise
-                    try {
-                        if (typeof logActivity === 'function') {
-                            console.log('🔍 Calling logActivity for cuisine update...');
-                            await logActivity('cuisines', 'updated', 'Updated cuisine: ' + title);
-                            console.log('✅ Activity logging completed successfully');
-                        } else {
-                            console.error('❌ logActivity function is not available');
-                        }
-                    } catch (error) {
-                        console.error('❌ Error calling logActivity:', error);
-                    }
-                    
-                    jQuery("#data-table_processing").hide();
-                    window.location.href = '{{ route("cuisines")}}';
-                });
-             }).catch(err => {
-                jQuery("#data-table_processing").hide();
-                $(".error_top").show();
-                $(".error_top").html("");
-                $(".error_top").append("<p>" + err + "</p>");
-                window.scrollTo(0, 0);
-            });
+        $('#review_attributes input').each(function(){ if($(this).is(':checked')) review_attributes.push($(this).val()); });
+        if(!title){
+            $(".error_top").show().html("<p>{{trans('lang.enter_cat_title_error')}}</p>");
+            window.scrollTo(0,0); return;
         }
-        }
+        var fd = new FormData();
+        fd.append('title', title);
+        fd.append('description', description);
+        fd.append('publish', item_publish ? 1 : 0);
+        fd.append('show_in_homepage', show_in_homepage ? 1 : 0);
+        review_attributes.forEach(function(v){ fd.append('review_attributes[]', v); });
+        if($('#cuisines_image')[0] && $('#cuisines_image')[0].files[0]){ fd.append('photo', $('#cuisines_image')[0].files[0]); }
+        $.ajax({
+            url: '{{ url('/cuisines') }}' + '/' + id,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            data: fd,
+            processData: false,
+            contentType: false
+        }).done(function(){ window.location.href='{{ route('cuisines') }}'; })
+          .fail(function(xhr){
+            var msg = 'Failed to update';
+            if(xhr.responseJSON && xhr.responseJSON.message){ msg = xhr.responseJSON.message; }
+            $(".error_top").show().html('<p>'+msg+'</p>');
+          });
     });
-});
-
-    // Use global logActivity function from activity_logs page
-    // This function will be available when the page loads
-
-function handleFileSelect(evt) {
-    var f = evt.target.files[0];
-    var reader = new FileReader();
-    reader.onload = (function (theFile) {
-        return function (e) {
-            var filePayload = e.target.result;
-            var val = $('#cuisines_image').val().toLowerCase();
-            var ext = val.split('.')[1];
-            var docName = val.split('fakepath')[1];
-            var filename = $('#cuisines_image').val().replace(/C:\\fakepath\\/i, '')
-            var timestamp = Number(new Date());
-            var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-            var uploadTask = storageRef.child(filename).put(theFile);
-            uploadTask.on('state_changed', function (snapshot) {
-                var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            }, function (error) {
-            }, function () {
-                uploadTask.snapshot.ref.getDownloadURL().then(function (downloadURL) {
-                    jQuery("#uploding_image").text("Upload is completed");
-                    photo = downloadURL;
-                    $(".cat_image").empty();
-                    $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-                });
-            });
-        };
-    })(f);
-    reader.readAsDataURL(f);
-}
-async function storeImageData() {
-            var newPhoto = '';
-            try {
-                if (catImageFile != "" && photo != catImageFile) {
-                    var catOldImageUrlRef = await storage.refFromURL(catImageFile);
-                    imageBucket = catOldImageUrlRef.bucket; 
-                    var envBucket = "<?php echo env('FIREBASE_STORAGE_BUCKET'); ?>";
-                    if (imageBucket == envBucket) {
-                        await catOldImageUrlRef.delete().then(() => {
-                            console.log("Old file deleted!")
-                        }).catch((error) => {
-                            console.log("ERR File delete ===", error);
-                        });
-                    } else {
-                        console.log('Bucket not matched');  
-                    }
-                } 
-                if (photo != catImageFile) {
-                    photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-                    var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', { contentType: 'image/jpg' });
-                    var downloadURL = await uploadTask.ref.getDownloadURL();
-                    newPhoto = downloadURL;
-                    photo = downloadURL;
-                } else {
-                    newPhoto = photo;
-                }
-            } catch (error) {
-                console.log("ERR ===", error);
-            }
-            return newPhoto;
-        }  
-//upload image with compression
-$("#cuisines_image").resizeImg({
-    callback: function(base64str) {
-        var val = $('#cuisines_image').val().toLowerCase();
-        var ext = val.split('.')[1];
-        var docName = val.split('fakepath')[1];
-        var filename = $('#cuisines_image').val().replace(/C:\\fakepath\\/i, '')
-        var timestamp = Number(new Date());
-        var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-        photo=base64str;
-        fileName=filename;
-        $(".cat_image").empty();
-        $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-        $("#cuisines_image").val('');
-    }
 });
 </script>
 @endsection
