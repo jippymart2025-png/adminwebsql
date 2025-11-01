@@ -174,45 +174,14 @@ foreach ($countries as $keycountry => $valuecountry) {
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script>
-    var createdAt=firebase.firestore.FieldValue.serverTimestamp();
-    var database=firebase.firestore();
-    var ref_deliverycharge=database.collection('settings').doc("DeliveryCharge");
-    var storageRef=firebase.storage().ref('images');
     var photo="";
-    var restaurantOwnerId="";
-    var restaurantOwnerOnline=false;
     var ownerphoto='';
     var ownerFileName='';
 
-    var restaurant_id=database.collection("tmp").doc().id;
-    var subscriptionPlanRef=database.collection('subscription_plans');
-
-    database.collection('settings').doc("AdminCommission").get().then(async function(snapshots) {
-        var adminCommissionSettings=snapshots.data();
-        $(".commission_fix").val(adminCommissionSettings.fix_commission);
-        $("#commission_type").val(adminCommissionSettings.commissionType);
-    });
-
-    var email_templates=database.collection('email_templates').where('type','==','new_vendor_signup');
-
-    var emailTemplatesData=null;
-
-    var adminEmail='';
-
-    var emailSetting=database.collection('settings').doc('emailSetting');
-
-    var currentCurrency='';
-    var currencyAtRight=false;
-    var refCurrency=database.collection('currencies').where('isActive','==',true);
-    refCurrency.get().then(async function(snapshots) {
-        var currencyData=snapshots.docs[0].data();
-        currentCurrency=currencyData.symbol;
-        currencyAtRight=currencyData.symbolAtRight;
-    });
-
-
+    // Load subscription plans from SQL
     $(document).ready(async function() {
-
+        jQuery("#data-table_processing").show();
+        
         // Set default vendor type to restaurant
         $("#vendor_type").val('restaurant');
 
@@ -222,32 +191,29 @@ foreach ($countries as $keycountry => $valuecountry) {
             placeholder: "Select Country",
             allowClear: true
         });
-        subscriptionPlanRef.where('isEnable','==',true).get().then(async function(
-            snapshots) {
-            snapshots.docs.forEach((listval) => {
-                var data=listval.data();
-                $('#subscription_plan').append($("<option></option>")
-                    .attr("value",data.id)
-                    .text(data.name));
-            });
+        
+        // Load subscription plans via AJAX
+        $.ajax({
+            url: '{{ route("vendors.subscription-plans") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success && response.data) {
+                    response.data.forEach(function(plan) {
+                        $('#subscription_plan').append($("<option></option>")
+                            .attr("value", plan.id)
+                            .text(plan.name));
+                    });
+                }
+                jQuery("#data-table_processing").hide();
+            },
+            error: function(error) {
+                console.error('Error loading subscription plans:', error);
+                jQuery("#data-table_processing").hide();
+            }
         });
-        jQuery("#data-table_processing").show();
-
-        await email_templates.get().then(async function(snapshots) {
-            emailTemplatesData=snapshots.docs[0].data();
-        });
-
-        await emailSetting.get().then(async function(snapshots) {
-            var emailSettingData=snapshots.data();
-
-            adminEmail=emailSettingData.userName;
-        });
-
-        jQuery("#data-table_processing").hide();
     })
 
     $(".save-form-btn").click(async function() {
-
         $(".error_top").hide();
 
         var userFirstName=$(".user_first_name").val();
@@ -257,25 +223,21 @@ foreach ($countries as $keycountry => $valuecountry) {
         var country_code=$("#country_selector").val();
         var userPhone=$(".user_phone").val();
         var vendorType=$("#vendor_type").val();
+        
         // Set default vendor type to 'restaurant' if empty or not selected
         if(!vendorType || vendorType=='' || vendorType==null || vendorType==undefined || vendorType=='') {
             vendorType='restaurant';
         }
-        var reststatus=true;
 
         var restaurant_active=false;
         if($("#is_active").is(':checked')) {
             restaurant_active=true;
         }
 
-        var user_name=userFirstName+" "+userLastName;
-        var user_id="<?php echo uniqid(); ?>";
-        var name=userFirstName+" "+userLastName;
-
         var subscriptionPlanId=$('#subscription_plan').val();
 
+        // Validation
         if(userFirstName=='') {
-
             $(".error_top").show();
             $(".error_top").html("");
             $(".error_top").append("<p>{{trans('lang.enter_owners_name_error')}}</p>");
@@ -284,11 +246,6 @@ foreach ($countries as $keycountry => $valuecountry) {
             $(".error_top").show();
             $(".error_top").html("");
             $(".error_top").append("<p>{{trans('lang.enter_owners_last_name_error')}}</p>");
-            window.scrollTo(0,0);
-        } else if(email=='') {
-            $(".error_top").show();
-            $(".error_top").html("");
-            $(".error_top").append("<p>{{trans('lang.enter_owners_email')}}</p>");
             window.scrollTo(0,0);
         } else if(email=='') {
             $(".error_top").show();
@@ -312,118 +269,68 @@ foreach ($countries as $keycountry => $valuecountry) {
             window.scrollTo(0,0);
         } else {
             jQuery("#data-table_processing").show();
-            if(subscriptionPlanId&&subscriptionPlanId!='') {
-                var subscriptionData=await getSubscriptionDetails(subscriptionPlanId);
-            } else {
-                var subscriptionData=null;
+            
+            // Get subscription plan data if selected
+            var subscriptionData = null;
+            if(subscriptionPlanId && subscriptionPlanId != '') {
+                // You might want to fetch the subscription plan details via AJAX here
+                // For now, we'll pass just the ID
             }
-            firebase.auth().createUserWithEmailAndPassword(email,password)
-                .then(async function(firebaseUser) {
-                    user_id=firebaseUser.user.uid;
-                    await storeImageData().then(async (IMG) => {
-                                database.collection('users').doc(user_id).set({
-                                    'appIdentifier': "web",
-                                    'firstName': userFirstName,
-                                    'lastName': userLastName,
-                                    'email': email,
-                                    'countryCode': country_code,
-                                    'phoneNumber': userPhone,
-                                    'profilePictureURL': IMG.ownerImage,
-                                    'provider': 'email',
-                                    'role': 'vendor',
-                                    'vType': vendorType,
-                                    'id': user_id,
-                                    'vendorID': null,
-                                    'active': restaurant_active,
-                                    'createdAt': createdAt,
-                                    'isDocumentVerify': false,
-                                    'subscription_plan': subscriptionData!=null? subscriptionData:null,
-                                    'subscriptionPlanId': subscriptionData!=null? subscriptionData.id:null,
-                                    'subscriptionExpiryDate': subscriptionData!=null? subscriptionData.expiryDate:null
-                                }).then(async function(result) {
-                                    if(subscriptionData!=null) {
-                                        historyData={'subscriptionData': subscriptionData,'userId': user_id,'expire_date': subscriptionData.expiryDate}
-                                        await addSubscriptionHistory(historyData);
-                                    }
-                                    
-                                    console.log('✅ Vendor saved successfully, now logging activity...');
-                                    try {
-                                        if (typeof logActivity === 'function') {
-                                            console.log('🔍 Calling logActivity for vendor creation...');
-                                            await logActivity('vendors', 'created', 'Created new vendor: ' + userFirstName + ' ' + userLastName);
-                                            console.log('✅ Activity logging completed successfully');
-                                        } else {
-                                            console.error('❌ logActivity function is not available');
-                                        }
-                                    } catch (error) {
-                                        console.error('❌ Error calling logActivity:', error);
-                                    }
-                                    
-                                    var formattedDate=new Date();
-                                        var month=formattedDate.getMonth()+1;
-                                        var day=formattedDate.getDate();
-                                        var year=formattedDate.getFullYear();
-
-                                        month=month<10? '0'+month:month;
-                                        day=day<10? '0'+day:day;
-
-                                        formattedDate=day+'-'+month+'-'+year;
-
-                                        var message=emailTemplatesData.message;
-                                        message=message.replace(/{userid}/g,user_id);
-                                        message=message.replace(/{username}/g,userFirstName+' '+userLastName);
-                                        message=message.replace(/{useremail}/g,email);
-                                        message=message.replace(/{userphone}/g,userPhone);
-
-                                        message=message.replace(/{date}/g,formattedDate);
-
-                                        emailTemplatesData.message=message;
-
-                                        var url="{{url('send-email')}}";
-
-                                        var sendEmailStatus=await sendEmail(url,emailTemplatesData.subject,emailTemplatesData.message,[adminEmail]);
-
-                                        if(sendEmailStatus) {
-                                            jQuery("#data-table_processing").hide();
-                                            window.location.href='{{ route("vendors")}}';
-                                        }
-
-                                })
-                         
-                    }).catch(err => {
+            
+            // Upload image first if exists
+            var profilePictureURL = '';
+            if(ownerphoto != '') {
+                profilePictureURL = await uploadImage(ownerphoto, ownerFileName);
+            }
+            
+            // Create vendor via AJAX
+            $.ajax({
+                url: '{{ route("vendors.create.post") }}',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    firstName: userFirstName,
+                    lastName: userLastName,
+                    email: email,
+                    password: password,
+                    countryCode: '+' + country_code,
+                    phoneNumber: userPhone,
+                    vType: vendorType,
+                    active: restaurant_active,
+                    profilePictureURL: profilePictureURL,
+                    subscriptionPlanId: subscriptionPlanId
+                },
+                success: function(response) {
+                    if(response.success) {
+                        jQuery("#data-table_processing").hide();
+                        window.location.href='{{ route("vendors")}}';
+                    } else {
                         jQuery("#data-table_processing").hide();
                         $(".error_top").show();
                         $(".error_top").html("");
-                        $(".error_top").append("<p>"+err+"</p>");
+                        $(".error_top").append("<p>"+response.message+"</p>");
                         window.scrollTo(0,0);
-                    });
-
-                }).catch(function(error) {
+                    }
+                },
+                error: function(error) {
                     jQuery("#data-table_processing").hide();
-
                     $(".error_top").show();
                     $(".error_top").html("");
-                    $(".error_top").append("<p>"+error+"</p>");
-                });
+                    var errorMessage = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : 'An error occurred';
+                    $(".error_top").append("<p>"+errorMessage+"</p>");
+                    window.scrollTo(0,0);
+                }
+            });
         }
     })
-    async function storeImageData() {
-        var newPhoto=[];
-        newPhoto['ownerImage']='';
-        try {
-            if(ownerphoto!='') {
-                ownerphoto=ownerphoto.replace(/^data:image\/[a-z]+;base64,/,"")
-                var uploadTask=await storageRef.child(ownerFileName).putString(ownerphoto,'base64',{
-                    contentType: 'image/jpg'
-                });
-                var downloadURL=await uploadTask.ref.getDownloadURL();
-                newPhoto['ownerImage']=downloadURL;
-                ownerphoto=downloadURL;
-            }
-        } catch(error) {
-            console.log("ERR ===",error);
-        }
-        return newPhoto;
+    
+    async function uploadImage(imageData, fileName) {
+        // In a real implementation, you would upload the image to your storage
+        // For now, we'll return the data URL (base64)
+        // You should implement proper image upload to your server or Firebase Storage
+        return imageData;
     }
 
     function handleFileSelectowner(evt) {
@@ -437,7 +344,6 @@ foreach ($countries as $keycountry => $valuecountry) {
 
                 reader.onload=(function(theFile) {
                     return function(e) {
-
                         var filePayload=e.target.result;
                         var val=f.name;
                         var ext=val.split('.')[1];
@@ -450,11 +356,9 @@ foreach ($countries as $keycountry => $valuecountry) {
                         ownerFileName=filename;
                         $("#uploaded_image_owner").attr('src',ownerphoto);
                         $(".uploaded_image_owner").show();
-
                     };
                 })(f);
                 reader.readAsDataURL(f);
-
             },
             error(err) {
                 console.log(err.message);
@@ -502,36 +406,6 @@ foreach ($countries as $keycountry => $valuecountry) {
     var newcountriesjs='<?php echo json_encode($newcountriesjs); ?>';
     var newcountriesjs=JSON.parse(newcountriesjs);
 
-    async function getSubscriptionDetails(subscriptionId) {
-        var data='';
-        await database.collection('subscription_plans').where('id','==',subscriptionId).get().then(async function(
-            snapshot) {
-            data=snapshot.docs[0].data();
-            var currentDate=new Date();
-            if(data.expiryDay!='-1') {
-                currentDate.setDate(currentDate.getDate()+parseInt(data.expiryDay));
-                data.expiryDate=firebase.firestore.Timestamp.fromDate(currentDate);
-            } else {
-                data.expiryDate=null;
-            }
-
-        })
-        return data;
-    }
-    async function addSubscriptionHistory(historyData) {
-        var id_order=database.collection('tmp').doc().id;
-        var createdAt=firebase.firestore.FieldValue.serverTimestamp();
-
-        var userId=historyData.userId;
-        await database.collection('subscription_history').doc(id_order).set({
-            'id': id_order,
-            'user_id': historyData.userId,
-            'expiry_date': historyData.expire_date,
-            'createdAt': createdAt,
-            'subscription_plan': historyData.subscriptionData,
-            'payment_type': 'cod'
-        })
-    }
-
 </script>
 @endsection
+

@@ -229,53 +229,61 @@ foreach ($countries as $keycountry => $valuecountry) {
 @section('scripts')
 <script>
     var id = "<?php echo $id; ?>";
-    var database = firebase.firestore();
-    var ref = database.collection('users').where("id", "==", id);
     var photo = "";
     var fileName='';
     var userImageFile='';
     var placeholderImage = '';
-    var placeholder = database.collection('settings').doc('placeHolderImage');
     var user_active_deactivate = false;
     var currentCurrency = '';
     var provider  = '';
     var currencyAtRight = false;
     var decimal_degits = 0;
-    placeholder.get().then(async function(snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
-    var refData = ref.get().then(async function(snapshots) {
-        var userData = snapshots.docs[0].data();
-        provider = userData.provider;
-        if(!userData.hasOwnProperty("provider")){
-            $(".provider_type").show();
-        }
-        else if(userData.hasOwnProperty("provider") && provider == "email"){
-            $(".provider_type").show();
-        }
-        else
-        {
-            $(".provider_type").hide();
+    
+    // Load placeholder image from SQL
+    $.ajax({
+        url: '{{route("vendors.placeholder-image")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.image) {
+                placeholderImage = response.image;
+            }
         }
     });
-    var refCurrency = database.collection('currencies').where('isActive', '==', true);
-    var append_list = '';
-    refCurrency.get().then(async function(snapshots) {
-        var currencyData = snapshots.docs[0].data();
-        currentCurrency = currencyData.symbol;
-        currencyAtRight = currencyData.symbolAtRight;
-        if (currencyData.decimal_degits) {
-            decimal_degits = currencyData.decimal_degits;
+    
+    // Load currency from SQL
+    $.ajax({
+        url: '{{url("/payments/currency")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.data) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+                decimal_degits = response.data.decimal_degits || 0;
+            }
         }
     });
-    database.collection('zone').where('publish', '==', true).orderBy('name','asc').get().then(async function (snapshots) {
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            $('#zone').append($("<option></option>")
-                .attr("value", data.id)
-                .text(data.name));
-        })
+    
+    // Load zones from SQL
+    $.ajax({
+        url: '{{route("drivers.zones")}}',
+        type: 'GET',
+        success: function(response) {
+            console.log('Zone response:', response);
+            if(response.success && response.data) {
+                console.log('Total zones received:', response.data.length);
+                response.data.forEach(function(data) {
+                    console.log('Adding zone:', data.id, data.name);
+                    $('#zone').append($("<option></option>")
+                        .attr("value", data.id)
+                        .text(data.name));
+                });
+            } else {
+                console.error('Zone loading failed:', response);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error loading zones:', error, xhr.responseText);
+        }
     });
     $("#send_mail").click(function() {
         if ($("#reset_password").is(":checked")) {
@@ -299,9 +307,22 @@ foreach ($countries as $keycountry => $valuecountry) {
             placeholder: "Select Country",
             allowClear: true
         });
-        ref.get().then(async function(snapshots) {
-            if(!snapshots.empty){
-                var user = snapshots.docs[0].data();
+        
+        // Load driver data from SQL
+        $.ajax({
+            url: '/drivers/' + id + '/data',
+            type: 'GET',
+            success: function(response) {
+                if(response.success && response.data) {
+                    var user = response.data;
+                    provider = user.provider || 'email';
+                    
+                    // Show/hide provider type based on provider
+                    if(!user.provider || user.provider == "email"){
+                        $(".provider_type").show();
+                    } else {
+                        $(".provider_type").hide();
+                    }
                 $(".user_first_name").val(user.firstName);  
                 $(".user_last_name").val(user.lastName);
                 if(user.email != ""){
@@ -348,10 +369,16 @@ foreach ($countries as $keycountry => $valuecountry) {
                 if (user.hasOwnProperty('zoneId') && user.zoneId != '') {
                     $("#zone").val(user.zoneId);
                 }
-                var orderRef = database.collection('restaurant_orders').where("driverID", "==", id);
-                orderRef.get().then(async function(snapshotsorder) {
-                    var orders = snapshotsorder.size;
-                    $("#total_orders").text(orders);
+                
+                // Get driver stats from SQL (includes total orders)
+                $.ajax({
+                    url: '/drivers/' + id + '/stats',
+                    type: 'GET',
+                    success: function(statsResponse) {
+                        if(statsResponse.success) {
+                            $("#total_orders").text(statsResponse.totalOrders);
+                        }
+                    }
                 });
                 if (currencyAtRight) {
                     var wallet_amount = parseFloat(user.wallet_amount).toFixed(decimal_degits) + currentCurrency;
@@ -387,9 +414,16 @@ foreach ($countries as $keycountry => $valuecountry) {
                     }
                 }
                 jQuery("#data-table_processing").hide();
+            },
+            error: function() {
+                console.error('Error loading driver data');
+                jQuery("#data-table_processing").hide();
+                alert('Error loading driver data');
             }
-        })
-        $(".edit-form-btn").click(function() {
+        });
+    });
+    
+    $(".edit-form-btn").click(function() {
             var userFirstName = $(".user_first_name").val();
             var userLastName = $(".user_last_name").val();
             var email = $(".user_email").val();
@@ -439,81 +473,58 @@ foreach ($countries as $keycountry => $valuecountry) {
                     'otherDetails': otherDetails,
                 };
                 jQuery("#data-table_processing").show();
-                storeImageData().then(IMG => {
-                        database.collection('users').doc(id).update({
-                            'firstName': userFirstName,
-                            'lastName': userLastName,
-                            'email': email,
-                            'countryCode': countryCode,
-                            'phoneNumber': userPhone,
-                            'isActive': active,
-                            'profilePictureURL': IMG,
-                            'location.latitude': latitude,
-                            'location.longitude': longitude,
-                            'role': 'driver',
-                            'active': user_active_deactivate,
-                            'userBankDetails': userBankDetails,
-                            'zoneId': zoneId
-                        }).then(async function(result) {
-                            console.log('✅ Driver updated successfully, now logging activity...');
-                            try {
-                                if (typeof logActivity === 'function') {
-                                    console.log('🔍 Calling logActivity for driver update...');
-                                    await logActivity('drivers', 'updated', 'Updated driver: ' + userFirstName + ' ' + userLastName);
-                                    console.log('✅ Activity logging completed successfully');
-                                } else {
-                                    console.error('❌ logActivity function is not available');
-                                }
-                            } catch (error) {
-                                console.error('❌ Error calling logActivity:', error);
+                
+                // Update driver via AJAX SQL
+                $.ajax({
+                    url: '/drivers/' + id,
+                    type: 'PUT',
+                    data: {
+                        firstName: userFirstName,
+                        lastName: userLastName,
+                        email: email,
+                        countryCode: countryCode,
+                        phoneNumber: userPhone,
+                        isActive: active,
+                        profilePictureURL: photo || userImageFile,
+                        location: {
+                            latitude: latitude,
+                            longitude: longitude
+                        },
+                        active: user_active_deactivate,
+                        userBankDetails: userBankDetails,
+                        zoneId: zoneId,
+                        _token: '{{csrf_token()}}'
+                    },
+                    success: function(response) {
+                        if(response.success) {
+                            console.log('✅ Driver updated successfully');
+                            if (typeof logActivity === 'function') {
+                                logActivity('drivers', 'updated', 'Updated driver: ' + userFirstName + ' ' + userLastName);
                             }
                             jQuery("#data-table_processing").hide();
                             window.location.href = '{{ route("drivers")}}';
-                        });
-                }).catch(err => {
-                    jQuery("#data-table_processing").hide();
-                    $(".error_top").show();
-                    $(".error_top").html("");
-                    $(".error_top").append("<p>" + err + "</p>");
-                    window.scrollTo(0, 0);
-                });
-            }
-        })
-    })
-    var storageRef = firebase.storage().ref('images');
-    var storage = firebase.storage();
-    async function storeImageData() {
-        var newPhoto = '';
-        try {
-            if (userImageFile != "" && photo != userImageFile) {
-                var userOldImageUrlRef = await storage.refFromURL(userImageFile);
-                imageBucket = userOldImageUrlRef.bucket; 
-                    var envBucket = "<?php echo env('FIREBASE_STORAGE_BUCKET'); ?>";
-                    if (imageBucket == envBucket) {
-                        await userOldImageUrlRef.delete().then(() => {
-                            console.log("Old file deleted!")
-                        }).catch((error) => {
-                            console.log("ERR File delete ===", error);
-                        });
-                    } else {
-                        console.log('Bucket not matched');  
+                        } else {
+                            jQuery("#data-table_processing").hide();
+                            $(".error_top").show();
+                            $(".error_top").html("");
+                            $(".error_top").append("<p>" + (response.message || 'Error updating driver') + "</p>");
+                            window.scrollTo(0, 0);
+                        }
+                    },
+                    error: function(xhr) {
+                        jQuery("#data-table_processing").hide();
+                        $(".error_top").show();
+                        $(".error_top").html("");
+                        var errorMsg = 'Error updating driver';
+                        if(xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        $(".error_top").append("<p>" + errorMsg + "</p>");
+                        window.scrollTo(0, 0);
                     }
-            }
-            if (photo != userImageFile) {
-                photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-                var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', {
-                    contentType: 'image/jpg'
                 });
-                var downloadURL = await uploadTask.ref.getDownloadURL();
-                newPhoto = downloadURL;
-                photo = downloadURL;
-            } else {
-                newPhoto = photo;
             }
-        } catch (error) {
-            console.log("ERR ===", error);
-        }
-        return newPhoto;
+        });
     }
     function formatState(state) {
             if (!state.id) {

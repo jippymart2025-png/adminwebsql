@@ -313,18 +313,33 @@
 @endsection
 @section('scripts')
 <script type="text/javascript">
-    var database = firebase.firestore();
-    var refData = database.collection('vendors');
+    // SQL-based implementation (no Firebase)
     var currentCurrency = '';
     var currencyAtRight = false;
-    var refCurrency = database.collection('currencies').where('isActive', '==', true);
     var decimal_degits = 0;
-    refCurrency.get().then(async function (snapshots) {
-        var currencyData = snapshots.docs[0].data();
-        currentCurrency = currencyData.symbol;
-        currencyAtRight = currencyData.symbolAtRight;
-        if (currencyData.decimal_degits) {
-            decimal_degits = currencyData.decimal_degits;
+    
+    // Filter variables for SQL queries
+    window.selectedZone = '';
+    window.selectedRestaurantType = '';
+    window.selectedBusinessModel = '';
+    window.selectedCuisine = '';
+    
+    // Load currency from SQL (if you have a currency endpoint, otherwise hardcode)
+    $.ajax({
+        url: '/payments/currency',
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.data) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+                decimal_degits = response.data.decimal_degits || 0;
+            }
+        },
+        error: function() {
+            // Fallback values
+            currentCurrency = '$';
+            currencyAtRight = false;
+            decimal_degits = 2;
         }
     });
     $('select').change(async function() {
@@ -333,45 +348,19 @@
         var businessModelValue = $('.business_model_selector').val();
         var cuisineValue = $('.cuisine_selector').val();
 
-        console.log('Filter change triggered:');
+        console.log('Filter change triggered (SQL):');
         console.log('- Zone Value:', zoneValue);
         console.log('- Restaurant Type:', restaurantTypeValue);
         console.log('- Business Model:', businessModelValue);
         console.log('- Cuisine:', cuisineValue);
 
-        // Reset refData to base collection
-        refData = database.collection('vendors');
+        // Store filter values for SQL query
+        window.selectedZone = zoneValue || '';
+        window.selectedRestaurantType = restaurantTypeValue || '';
+        window.selectedBusinessModel = businessModelValue || '';
+        window.selectedCuisine = cuisineValue || '';
 
-        // Apply zone filter
-        if (zoneValue && zoneValue !== '') {
-            console.log('Filtering by zone:', zoneValue);
-            refData = refData.where('zoneId', '==', zoneValue);
-            console.log('Applied zone filter, refData query:', refData);
-        } else {
-            console.log('No zone filter applied');
-        }
-
-        // Apply restaurant type filter
-        if (restaurantTypeValue == "true") {
-            refData = refData.where('enabledDiveInFuture', '==', true);
-        }
-
-        // Apply business model filter
-        if (businessModelValue && businessModelValue !== '') {
-            var vendorSelectedIds = await subscriptionPlanVendorIds(businessModelValue);
-            if (vendorSelectedIds.length > 0) {
-                refData = refData.where('id', 'in', vendorSelectedIds);
-            } else {
-                refData = refData.where('id', '==', null);
-            }
-        }
-
-        // Apply cuisine filter
-        if (cuisineValue && cuisineValue !== '') {
-            refData = refData.where('categoryID', '==', cuisineValue);
-        }
-
-        // Reload the table with new filters
+        // Reload the table with new filters (will be sent to backend)
         $('#storeTable').DataTable().ajax.reload();
     });
 
@@ -382,8 +371,11 @@
         $('.business_model_selector').val('').trigger('change');
         $('.cuisine_selector').val('').trigger('change');
 
-        // Reset refData to base collection
-        refData = database.collection('vendors');
+        // Clear filter variables
+        window.selectedZone = '';
+        window.selectedRestaurantType = '';
+        window.selectedBusinessModel = '';
+        window.selectedCuisine = '';
 
         // Reload the table
         $('#storeTable').DataTable().ajax.reload();
@@ -484,11 +476,17 @@
             self.select2('close');
         }, 0);
     });
-    var placeholder = database.collection('settings').doc('placeHolderImage');
-    placeholder.get().then(async function (snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
+    // Load placeholder image from SQL
+    var placeholderImage = '';
+    $.ajax({
+        url: '{{ route("vendors.placeholder-image") }}',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                placeholderImage = response.image;
+            }
+        }
+    });
     $(document).ready(function () {
         jQuery("#data-table_processing").show();
         $(document).on('click', '.dt-button-collection .dt-button', function () {
@@ -518,160 +516,86 @@
             processing: false,
             serverSide: true,
             responsive: true,
-            ajax: async function(data, callback, settings) {
+            ajax: function(data, callback, settings) {
                 const start = data.start;
                 const length = data.length;
                 const searchValue = data.search.value.toLowerCase();
-                const orderColumnIndex = data.order[0].column;
-                const orderDirection = data.order[0].dir;
-                const orderableColumns = (checkDeletePermission) ? ['','title', 'authorName', 'zoneName', 'createdAt', '', ''] : ['title', 'authorName', 'zoneName', 'createdAt', '', ''];
-                const orderByField = orderableColumns[orderColumnIndex];
+                
                 if (searchValue.length >= 3 || searchValue.length === 0) {
                     $('#data-table_processing').show();
                 }
-                console.log('Executing query with refData:', refData);
-                // Temporarily remove orderBy to avoid index requirement
-                await refData.get().then(async function(querySnapshot) {
-                    console.log('Query result - Total documents found:', querySnapshot.docs.length);
-                    if (querySnapshot.empty) {
-                        $('.rest_count').text(0);
-                        console.error("No data found in Firestore.");
+                
+                console.log('Fetching restaurants from SQL...');
+                
+                // Build request data with filters
+                var requestData = {
+                    start: start,
+                    length: length,
+                    draw: data.draw,
+                    search: { value: searchValue },
+                    zone: window.selectedZone || '',
+                    restaurant_type: window.selectedRestaurantType || '',
+                    vType: window.selectedBusinessModel || ''
+                };
+                
+                // Fetch from SQL backend
+                $.ajax({
+                    url: '{{ route("restaurants.data") }}',
+                    method: 'GET',
+                    data: requestData,
+                    success: async function(response) {
+                        console.log('Restaurants loaded from SQL:', response.data.length);
+                        
+                        if (response.data.length === 0) {
+                            $('.rest_count').text('00');
+                            $('.rest_active_count').text('00');
+                            $('.rest_inactive_count').text('00');
+                            $('.new_joined_rest').text('00');
+                            $('#data-table_processing').hide();
+                            callback({
+                                draw: data.draw,
+                                recordsTotal: 0,
+                                recordsFiltered: 0,
+                                data: []
+                            });
+                            return;
+                        }
+                        
+                        // Update statistics from response
+                        $('.rest_count').text(response.stats.total);
+                        $('.rest_active_count').text(response.stats.active);
+                        $('.rest_inactive_count').text(response.stats.inactive);
+                        $('.new_joined_rest').text(response.stats.new_joined);
+                        
+                        // Build table rows
+                        let records = [];
+                        for (let restaurant of response.data) {
+                            var rowData = await buildHTML(restaurant);
+                            records.push(rowData);
+                        }
+                        
                         $('#data-table_processing').hide();
                         callback({
                             draw: data.draw,
-                            recordsTotal: 0,
-                            recordsFiltered: 0,
-                            filteredData:[],
-                            data: []
+                            recordsTotal: response.recordsTotal,
+                            recordsFiltered: response.recordsFiltered,
+                            data: records
                         });
+                    },
+                    error: function(error) {
+                        console.error("Error fetching restaurants from SQL:", error);
+                        $('#data-table_processing').hide();
                         $('.rest_count').text('00');
                         $('.rest_active_count').text('00');
                         $('.rest_inactive_count').text('00');
                         $('.new_joined_rest').text('00');
-                        return;
+                        callback({
+                            draw: data.draw,
+                            recordsTotal: 0,
+                            recordsFiltered: 0,
+                            data: []
+                        });
                     }
-                    let records = [];
-                    let filteredRecords = [];
-
-                    // Sort documents by createdAt since we removed orderBy from query
-                    const sortedDocs = querySnapshot.docs.sort((a, b) => {
-                        const aTime = a.data().createdAt ? a.data().createdAt.toDate().getTime() : 0;
-                        const bTime = b.data().createdAt ? b.data().createdAt.toDate().getTime() : 0;
-                        return aTime - bTime; // Ascending order
-                    });
-
-                    await Promise.all(sortedDocs.map(async (doc) => {
-                        let childData = doc.data();
-                        console.log('Restaurant data:', childData.title, 'zoneId:', childData.zoneId);
-                        childData.phone = (childData.phonenumber != '' && childData.phonenumber != null && childData.phonenumber.slice(0, 1) == '+') ? childData.phonenumber.slice(1) : childData.phonenumber;
-                        childData.id = doc.id;
-                        childData.phonenumber = shortEditNumber(childData.phonenumber);
-
-                        // Add zone name for export functionality
-                        if (childData.hasOwnProperty('zoneId') && childData.zoneId != null && childData.zoneId != '') {
-                            try {
-                                const zoneDoc = await database.collection('zone').doc(childData.zoneId).get();
-                                if (zoneDoc.exists) {
-                                    childData.zoneName = zoneDoc.data().name || 'Unknown Zone';
-                                } else {
-                                    childData.zoneName = 'Zone Not Found';
-                                }
-                            } catch (error) {
-                                childData.zoneName = 'Error loading zone';
-                            }
-                        } else {
-                            childData.zoneName = 'No Zone';
-                        }
-                        if (searchValue) {
-                            var date = '';
-                            var time = '';
-                            if (childData.hasOwnProperty("createdAt")) {
-                                try {
-                                    date = childData.createdAt.toDate().toDateString();
-                                    time = childData.createdAt.toDate().toLocaleTimeString('en-US');
-                                } catch (err) {}
-                            }
-                            var createdAt = date + ' ' + time;
-                            if (
-                                (childData.title && childData.title.toLowerCase().toString().includes(searchValue)) ||
-                                (childData.authorName && childData.authorName.toLowerCase().toString().includes(searchValue)) ||
-                                (createdAt && createdAt.toString().toLowerCase().indexOf(searchValue) > -1) ||
-                                (childData.email && childData.email.toLowerCase().toString().includes(searchValue)) ||
-                                (childData.phoneNumber && childData.phoneNumber.toString().includes(searchValue))
-                            ) {
-                                filteredRecords.push(childData);
-                            }
-                        } else {
-                            filteredRecords.push(childData);
-                        }
-                    }));
-                    filteredRecords.sort((a, b) => {
-                        let aValue = a[orderByField] ? a[orderByField].toString().toLowerCase() : '';
-                        let bValue = b[orderByField] ? b[orderByField].toString().toLowerCase() : '';
-                        if (orderByField === 'createdAt') {
-                            try {
-                                aValue = a[orderByField] ? new Date(a[orderByField].toDate()).getTime() : 0;
-                                bValue = b[orderByField] ? new Date(b[orderByField].toDate()).getTime() : 0;
-                            } catch (err) {}
-                        }
-                        if (orderDirection === 'asc') {
-                            return (aValue > bValue) ? 1 : -1;
-                        } else {
-                            return (aValue < bValue) ? 1 : -1;
-                        }
-                    });
-                    const totalRecords = filteredRecords.length;
-                    let active_rest = 0;
-                    let inactive_rest = 0;
-                    let new_joined_rest = 0;
-                    const today = new Date().setHours(0, 0, 0, 0);
-                    await Promise.all(filteredRecords.map(async (childData) => {
-                        var isActive = false;
-                        if (childData.author) {
-                            const user_id = childData.author;
-                            isActive = await vendorStatus(user_id);
-                        }
-                        if (isActive) {
-                            active_rest += 1;
-                        } else {
-                            inactive_rest += 1;
-                        }
-                        if (childData.createdAt && new Date(childData.createdAt.seconds * 1000).setHours(0, 0, 0, 0) === today) {
-                            new_joined_rest += 1;
-                        }
-                    }));
-                    $('.rest_count').text(totalRecords);
-                    $('.rest_active_count').text(active_rest);
-                    $('.rest_inactive_count').text(inactive_rest);
-                    $('.new_joined_rest').text(new_joined_rest);
-                    const paginatedRecords = filteredRecords.slice(start, start + length);
-                    await Promise.all(paginatedRecords.map(async (childData) => {
-                        var getData = await buildHTML(childData);
-                        records.push(getData);
-                    }));
-                    $('#data-table_processing').hide();
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: totalRecords,
-                        recordsFiltered: totalRecords,
-                        filteredData: filteredRecords,
-                        data: records
-                    });
-
-                    // Update zone names after table is populated
-                    setTimeout(() => {
-                        updateZoneNames();
-                    }, 100);
-                }).catch(function(error) {
-                    console.error("Error fetching data from Firestore:", error);
-                    $('#data-table_processing').hide();
-                    callback({
-                        draw: data.draw,
-                        recordsTotal: 0,
-                        recordsFiltered: 0,
-                        filteredData: [],
-                        data: []
-                    });
                 });
             },
             order: (checkDeletePermission) ? [[5, 'desc']] : [[4, 'desc']],

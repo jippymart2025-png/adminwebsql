@@ -642,8 +642,6 @@
 @section('scripts')
 <script>
     var id="<?php echo $id;?>";
-    var database=firebase.firestore();
-    var ref=database.collection('vendors').where("id","==",id);
     var photo="";
     var vendorAuthor='';
     var restaurantOwnerId="";
@@ -657,152 +655,213 @@
     var timeslotworkSatuarday=[];
     var timeslotworkThursday=[];
     var placeholderImage='';
-    var placeholder=database.collection('settings').doc('placeHolderImage');
-    placeholder.get().then(async function(snapshotsimage) {
-        var placeholderImageData=snapshotsimage.data();
-        placeholderImage=placeholderImageData.image;
-    })
     var currentCurrency='';
     var currencyAtRight=false;
     var decimal_degits=0;
-    var refCurrency=database.collection('currencies').where('isActive','==',true);
-    refCurrency.get().then(async function(snapshots) {
-        var currencyData=snapshots.docs[0].data();
-        currentCurrency=currencyData.symbol;
-        currencyAtRight=currencyData.symbolAtRight;
-        if(currencyData.decimal_degits) {
-            decimal_degits=currencyData.decimal_degits;
-        }
-    });
     var commisionModel=false;
     var AdminCommission='';
-    database.collection('settings').doc("AdminCommission").get().then(async function(snapshots) {
-        var commissionSetting=snapshots.data();
-        if(commissionSetting.isEnabled==true) {
-            commisionModel=true;
-        }
-        if(commissionSetting.commissionType=="Percent") {
-            AdminCommission=commissionSetting.fix_commission+''+'%';
-        } else {
-            if(currencyAtRight) {
-                AdminCommission=commissionSetting.fix_commission.toFixed(decimal_degits)+currentCurrency;
-            } else {
-                AdminCommission=currentCurrency+commissionSetting.fix_commission.toFixed(decimal_degits);
+    var subscriptionModel=false;
+    
+    // Load placeholder image from SQL
+    $.ajax({
+        url: '{{route("vendors.placeholder-image")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.image) {
+                placeholderImage = response.image;
             }
         }
     });
-    var subscriptionModel=false;
-    database.collection('settings').doc("restaurant").get().then(async function(snapshots) {
-        var businessModelSettings=snapshots.data();
-        if(businessModelSettings.hasOwnProperty('subscription_model')&&businessModelSettings.subscription_model==true) {
-            subscriptionModel=true;
+    
+    // Load currency settings from SQL
+    $.ajax({
+        url: '{{url("/payments/currency")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.data) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+                decimal_degits = response.data.decimal_degits || 0;
+            }
         }
     });
-    var email_templates=database.collection('email_templates').where('type','==','wallet_topup');
+    
+    // Load admin commission settings from SQL
+    $.ajax({
+        url: '{{url("/api/settings/AdminCommission")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.data) {
+                var commissionSetting = response.data;
+                if(commissionSetting.isEnabled == true) {
+                    commisionModel = true;
+                }
+                if(commissionSetting.commissionType == "Percent") {
+                    AdminCommission = commissionSetting.fix_commission + '%';
+                } else {
+                    if(currencyAtRight) {
+                        AdminCommission = parseFloat(commissionSetting.fix_commission).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        AdminCommission = currentCurrency + parseFloat(commissionSetting.fix_commission).toFixed(decimal_degits);
+                    }
+                }
+            }
+        }
+    });
+    
+    // Load business model settings from SQL
+    $.ajax({
+        url: '{{url("/api/settings/restaurant")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.data) {
+                var businessModelSettings = response.data;
+                if(businessModelSettings.subscription_model == true) {
+                    subscriptionModel = true;
+                }
+            }
+        }
+    });
     var emailTemplatesData=null;
+    
+    // Load email template from SQL
+    $.ajax({
+        url: '{{url("/api/email-templates/wallet_topup")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.template) {
+                emailTemplatesData = response.template;
+            }
+        }
+    });
+    
     $(".save-form-btn").click(function() {
-        var date=firebase.firestore.FieldValue.serverTimestamp();
         var amount=$('#amount').val();
         if(amount=='') {
             $('#wallet_error').text('{{trans("lang.add_wallet_amount_error")}}')
             return false;
         }
         var note=$('#note').val();
-        database.collection('users').where('id','==',vendorAuthor).get().then(async function(snapshot) {
-            if(snapshot.docs.length>0) {
-                var data=snapshot.docs[0].data();
-                var walletAmount=0;
-                if(data.hasOwnProperty('wallet_amount')&&!isNaN(data.wallet_amount)&&data.wallet_amount!=null) {
-                    walletAmount=data.wallet_amount;
+        
+        // Add wallet amount via AJAX
+        $.ajax({
+            url: '{{url("/api/users/wallet/add")}}',
+            type: 'POST',
+            data: {
+                user_id: vendorAuthor,
+                amount: amount,
+                note: note,
+                _token: '{{csrf_token()}}'
+            },
+            success: function(response) {
+                if(response.success) {
+                    var amountFormatted, newWalletFormatted;
+                    if(currencyAtRight) {
+                        amountFormatted = parseInt(amount).toFixed(decimal_degits) + currentCurrency;
+                        newWalletFormatted = parseFloat(response.newWalletAmount).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        amountFormatted = currentCurrency + parseInt(amount).toFixed(decimal_degits);
+                        newWalletFormatted = currentCurrency + parseFloat(response.newWalletAmount).toFixed(decimal_degits);
+                    }
+                    
+                    var formattedDate = new Date();
+                    var month = formattedDate.getMonth() + 1;
+                    var day = formattedDate.getDate();
+                    var year = formattedDate.getFullYear();
+                    month = month < 10 ? '0' + month : month;
+                    day = day < 10 ? '0' + day : day;
+                    formattedDate = day + '-' + month + '-' + year;
+                    
+                    if(emailTemplatesData) {
+                        var message = emailTemplatesData.message;
+                        message = message.replace(/{username}/g, response.user.firstName + ' ' + response.user.lastName);
+                        message = message.replace(/{date}/g, formattedDate);
+                        message = message.replace(/{amount}/g, amountFormatted);
+                        message = message.replace(/{paymentmethod}/g, 'Wallet');
+                        message = message.replace(/{transactionid}/g, response.transaction_id);
+                        message = message.replace(/{newwalletbalance}/g, newWalletFormatted);
+                        
+                        var url = "{{url('send-email')}}";
+                        sendEmail(url, emailTemplatesData.subject, message, [response.user.email]).then(function(sendEmailStatus) {
+                            if(sendEmailStatus) {
+                                window.location.reload();
+                            }
+                        });
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    $('#user_account_not_found_error').text(response.message || '{{trans("lang.user_detail_not_found")}}');
                 }
-                user_id=data.id;
-                var newWalletAmount=parseFloat(walletAmount)+parseFloat(amount);
-                database.collection('users').doc(vendorAuthor).update({
-                    'wallet_amount': newWalletAmount
-                }).then(function(result) {
-                    var tempId=database.collection("tmp").doc().id;
-                    database.collection('wallet').doc(tempId).set({
-                        'amount': parseFloat(amount),
-                        'date': date,
-                        'isTopUp': true,
-                        'id': tempId,
-                        'order_id': '',
-                        'payment_method': 'Wallet',
-                        'payment_status': 'success',
-                        'user_id': user_id,
-                        'note': note,
-                        'transactionUser': "vendor",
-                    }).then(async function(result) {
-                        if(currencyAtRight) {
-                            amount=parseInt(amount).toFixed(decimal_degits)+""+currentCurrency;
-                            newWalletAmount=newWalletAmount.toFixed(decimal_degits)+""+currentCurrency;
-                        } else {
-                            amount=currentCurrency+""+parseInt(amount).toFixed(decimal_degits);
-                            newWalletAmount=currentCurrency+""+newWalletAmount.toFixed(decimal_degits);
-                        }
-                        var formattedDate=new Date();
-                        var month=formattedDate.getMonth()+1;
-                        var day=formattedDate.getDate();
-                        var year=formattedDate.getFullYear();
-                        month=month<10? '0'+month:month;
-                        day=day<10? '0'+day:day;
-                        formattedDate=day+'-'+month+'-'+year;
-                        var message=emailTemplatesData.message;
-                        message=message.replace(/{username}/g,data.firstName+' '+data.lastName);
-                        message=message.replace(/{date}/g,formattedDate);
-                        message=message.replace(/{amount}/g,amount);
-                        message=message.replace(/{paymentmethod}/g,'Wallet');
-                        message=message.replace(/{transactionid}/g,tempId);
-                        message=message.replace(/{newwalletbalance}/g,newWalletAmount);
-                        emailTemplatesData.message=message;
-                        var url="{{url('send-email')}}";
-                        var sendEmailStatus=await sendEmail(url,emailTemplatesData.subject,emailTemplatesData.message,[data.email]);
-                        if(sendEmailStatus) {
-                            window.location.reload();
-                        }
-                    })
-                })
-            } else {
-                $('#user_account_not_found_error').text('{{trans("lang.user_detail_not_found")}}');
+            },
+            error: function() {
+                $('#user_account_not_found_error').text('{{trans("lang.error_adding_wallet_amount")}}');
             }
         });
     });
     async function getWalletBalance(vendorId) {
-        database.collection('users').where('id','==',vendorId).get().then(async function(snapshot) {
-            if(snapshot.docs.length>0) {
-                restaurant=snapshot.docs[0].data();
-                var wallet_balance=0;
-                if(restaurant.hasOwnProperty('wallet_amount')&&restaurant.wallet_amount!=null&&!isNaN(restaurant.wallet_amount)) {
-                    wallet_balance=restaurant.wallet_amount;
+        return $.ajax({
+            url: '/api/users/' + vendorId + '/wallet-balance',
+            type: 'GET',
+            success: function(response) {
+                if(response.success) {
+                    var wallet_balance = response.wallet_balance || 0;
+                    if(currencyAtRight) {
+                        wallet_balance = parseFloat(wallet_balance).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        wallet_balance = currentCurrency + parseFloat(wallet_balance).toFixed(decimal_degits);
+                    }
+                    $('.wallet').html(wallet_balance);
                 }
-                if(currencyAtRight) {
-                    wallet_balance=parseFloat(wallet_balance).toFixed(decimal_degits)+""+currentCurrency;
-                } else {
-                    wallet_balance=currentCurrency+""+parseFloat(wallet_balance).toFixed(decimal_degits);
-                }
-                $('.wallet').html(wallet_balance);
             }
         });
     }
     $(document).ready(async function() {
         jQuery("#data-table_processing").show();
-        await email_templates.get().then(async function(snapshots) {
-            emailTemplatesData=snapshots.docs[0].data();
+        
+        // Load stats from SQL
+        $.ajax({
+            url: '/restaurants/' + id + '/stats',
+            type: 'GET',
+            success: function(response) {
+                if(response.success) {
+                    $("#total_orders").text(response.totalOrders);
+                    
+                    var totalEarnings_formatted;
+                    if(currencyAtRight) {
+                        totalEarnings_formatted = parseFloat(response.totalEarnings).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        totalEarnings_formatted = currentCurrency + parseFloat(response.totalEarnings).toFixed(decimal_degits);
+                    }
+                    $("#total_earnings").text(totalEarnings_formatted);
+                    
+                    var totalPayments_formatted;
+                    if(currencyAtRight) {
+                        totalPayments_formatted = parseFloat(response.totalPayments).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        totalPayments_formatted = currentCurrency + parseFloat(response.totalPayments).toFixed(decimal_degits);
+                    }
+                    $("#total_payment").text(totalPayments_formatted);
+                    
+                    var remaining_formatted;
+                    if(currencyAtRight) {
+                        remaining_formatted = parseFloat(response.remainingBalance).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        remaining_formatted = currentCurrency + parseFloat(response.remainingBalance).toFixed(decimal_degits);
+                    }
+                    $("#remaining_amount").text(remaining_formatted);
+                }
+            }
         });
-        var orders=await getTotalOrders();
-        var earnings=await getTotalEarnings();
-        var payment=await getTotalpayment();
-        var remaining=earnings-payment;
-        if(currencyAtRight) {
-            remaining_with_currency=parseFloat(remaining).toFixed(decimal_degits)+""+currentCurrency;
-        } else {
-            remaining_with_currency=currentCurrency+""+parseFloat(remaining).toFixed(decimal_degits);
-        }
-        $("#remaining_amount").text(remaining_with_currency);
-        ref.get().then(async function(snapshots) {
-            jQuery("#data-table_processing").hide();
-            if(!snapshots.empty) {
-                var restaurant=snapshots.docs[0].data();
+        
+        // Load restaurant data from SQL
+        $.ajax({
+            url: '/restaurants/' + id + '/data',
+            type: 'GET',
+            success: function(response) {
+                jQuery("#data-table_processing").hide();
+                if(response.success && response.data) {
+                    var restaurant = response.data;
                 vendorAuthor=restaurant.author;
                 $(".restaurant_name").text(restaurant.title);
                 var rating=0;
@@ -968,11 +1027,11 @@
                     }
                 }
                 var photos='<ul class="p-0">';
-                restaurant.photos.forEach((photo) => {
-                    photos=photos+'<li><img width="100px" id="" height="auto" src="'+photo+'"></span></li>';
-                })
-                photos=photos+'</ul>'
-                if(restaurant.photos&&restaurant.photos!=""&&restaurant.photos!=null&&restaurant.photos.length>0) {
+                if(restaurant.photos && Array.isArray(restaurant.photos) && restaurant.photos.length > 0) {
+                    restaurant.photos.forEach((photo) => {
+                        photos=photos+'<li><img width="100px" id="" height="auto" src="'+photo+'"></span></li>';
+                    })
+                    photos=photos+'</ul>'
                     $("#photos").html(photos);
                 } else {
                     $("#photos").html('<p>photos not available.</p>');
@@ -986,11 +1045,13 @@
                 $("#restaurant_image").html(image);
                 $(".reviewhtml").html(review);
                 filtershtml='';
-                for(var key in restaurant.filters) {
-                    if(restaurant.filters[key]=="Yes") {
-                        filtershtml=filtershtml+'<li><span class="mdi mdi-check green mr-2"></span>'+key+'</li>';
-                    } else {
-                        filtershtml=filtershtml+'<li><span class="mdi mdi-close red mr-2"></span>'+key+'</li>';
+                if(restaurant.filters && typeof restaurant.filters === 'object') {
+                    for(var key in restaurant.filters) {
+                        if(restaurant.filters[key]=="Yes") {
+                            filtershtml=filtershtml+'<li><span class="mdi mdi-check green mr-2"></span>'+key+'</li>';
+                        } else {
+                            filtershtml=filtershtml+'<li><span class="mdi mdi-close red mr-2"></span>'+key+'</li>';
+                        }
                     }
                 }
                 $("#filtershtml").html(filtershtml);
@@ -998,15 +1059,37 @@
                 if (restaurant.categoryTitle && Array.isArray(restaurant.categoryTitle)) {
                     // Multiple categories
                     $(".restaurant_cuisines").text(restaurant.categoryTitle.join(", "));
+                } else if (restaurant.categoryTitle && typeof restaurant.categoryTitle === 'string') {
+                    try {
+                        var categoryTitles = JSON.parse(restaurant.categoryTitle);
+                        if (Array.isArray(categoryTitles)) {
+                            $(".restaurant_cuisines").text(categoryTitles.join(", "));
+                        } else {
+                            $(".restaurant_cuisines").text(restaurant.categoryTitle);
+                        }
+                    } catch(e) {
+                        $(".restaurant_cuisines").text(restaurant.categoryTitle);
+                    }
                 } else if (restaurant.categoryID) {
-                    // Single category (backward compatibility)
-                    await database.collection('vendor_categories').get().then(async function(snapshots) {
-                        snapshots.docs.forEach((listval) => {
-                            var data=listval.data();
-                            if(data.id==restaurant.categoryID) {
-                                $(".restaurant_cuisines").text(data.title);
+                    // Category ID - need to look up from database
+                    $.ajax({
+                        url: '{{route("restaurants.categories")}}',
+                        type: 'GET',
+                        success: function(catResponse) {
+                            if(catResponse.success && catResponse.data) {
+                                var categoryId = Array.isArray(restaurant.categoryID) ? restaurant.categoryID[0] : restaurant.categoryID;
+                                if(typeof categoryId === 'string') {
+                                    try {
+                                        var parsed = JSON.parse(categoryId);
+                                        categoryId = Array.isArray(parsed) ? parsed[0] : parsed;
+                                    } catch(e) {}
+                                }
+                                var category = catResponse.data.find(cat => cat.id == categoryId);
+                                if(category) {
+                                    $(".restaurant_cuisines").text(category.title);
+                                }
                             }
-                        })
+                        }
                     });
                 }
                 $(".opentime").text(restaurant.opentime);
@@ -1030,40 +1113,57 @@
                 restaurantOwnerOnline=restaurant.isActive;
                 photo=restaurant.photo;
                 restaurantOwnerId=restaurant.author;
-                await database.collection('users').where("id","==",restaurant.author).get().then(async function(snapshots) {
-                    snapshots.docs.forEach((listval) => {
-                        var user=listval.data();
-                        $(".vendor_name").html(user.firstName+" "+user.lastName);
-                        if(user.email!=""&&user.email!=null) {
-                            $(".vendor_email").html(shortEmail(user.email));
+                
+                // Load user data from SQL
+                $.ajax({
+                    url: '/api/users/' + restaurant.author,
+                    type: 'GET',
+                    success: function(userResponse) {
+                        if(userResponse.success && userResponse.user) {
+                            var user = userResponse.user;
+                            $(".vendor_name").html(user.firstName + " " + user.lastName);
+                            if(user.email != "" && user.email != null) {
+                                $(".vendor_email").html(shortEmail(user.email));
+                            } else {
+                                $(".vendor_email").html("");
+                            }
+                            if(user.phoneNumber != "" && user.phoneNumber != null) {
+                                $(".vendor_phoneNumber").html(shortEditNumber(user.phoneNumber));
+                            } else {
+                                $(".vendor_phoneNumber").html("");
+                            }
                         }
-                        else {
-                            $(".vendor_email").html("");
-                        }
-                        if(user.phonenumber!=""&&user.phoneNumber!=null) {
-                            $(".vendor_phoneNumber").html(shortEditNumber(user.phoneNumber));
-                        }
-                        else {
-                            $(".vendor_phoneNumber").html("");
-                        }
-                    })
+                    }
                 });
-                await database.collection('vendor_categories').get().then(async function(snapshots) {
-                    snapshots.docs.forEach((listval) => {
-                        var data=listval.data();
-                        $('#restaurant_cuisines').append($("<option></option>")
-                            .attr("value",data.id)
-                            .text(data.title));
-                    });
+                
+                // Load categories from SQL
+                $.ajax({
+                    url: '{{route("restaurants.categories")}}',
+                    type: 'GET',
+                    success: function(catResponse) {
+                        if(catResponse.success && catResponse.data) {
+                            catResponse.data.forEach(function(data) {
+                                $('#restaurant_cuisines').append($("<option></option>")
+                                    .attr("value", data.id)
+                                    .text(data.title));
+                            });
 
-                    // Handle multiple category selection for existing restaurant
-                    if (restaurant.categoryID) {
-                        if (Array.isArray(restaurant.categoryID)) {
-                            // Multiple categories
-                            $('#restaurant_cuisines').val(restaurant.categoryID);
-                        } else {
-                            // Single category (backward compatibility)
-                            $('#restaurant_cuisines').val([restaurant.categoryID]);
+                            // Handle multiple category selection for existing restaurant
+                            if (restaurant.categoryID) {
+                                var categoryIds = restaurant.categoryID;
+                                if(typeof categoryIds === 'string') {
+                                    try {
+                                        categoryIds = JSON.parse(categoryIds);
+                                    } catch(e) {
+                                        categoryIds = [categoryIds];
+                                    }
+                                }
+                                if (Array.isArray(categoryIds)) {
+                                    $('#restaurant_cuisines').val(categoryIds);
+                                } else {
+                                    $('#restaurant_cuisines').val([categoryIds]);
+                                }
+                            }
                         }
                     }
                 });
@@ -1082,14 +1182,30 @@
                     $(".mapouter").html("<p>No map available</p>");
                 }
                 if(restaurant.hasOwnProperty('zoneId')&&restaurant.zoneId!='') {
-                    database.collection('zone').doc(restaurant.zoneId).get().then(async function(snapshots) {
-                        let zone=snapshots.data();
-                        $("#zone_name").text(zone.name);
+                    $.ajax({
+                        url: '/api/zone/' + restaurant.zoneId,
+                        type: 'GET',
+                        success: function(zoneResponse) {
+                            if(zoneResponse.success && zoneResponse.zone) {
+                                $("#zone_name").text(zoneResponse.zone.name);
+                            }
+                        }
                     });
                 }
                 jQuery("#data-table_processing").hide();
+            } else {
+                jQuery("#data-table_processing").hide();
+                console.error('Failed to load restaurant data:', response);
+                alert('Error loading restaurant data: ' + (response.message || 'Unknown error'));
             }
-        })
+        },
+        error: function(xhr, status, error) {
+            jQuery("#data-table_processing").hide();
+            console.error('AJAX error loading restaurant data:', error, xhr.responseText);
+            alert('Error loading restaurant data. Please check console for details.');
+        }
+    });
+        
         $(".save_restaurant_btn").click(function() {
             var restaurantname=$(".restaurant_name").val();
             // Handle multiple category selection
@@ -1105,18 +1221,33 @@
             var longitude=parseFloat($(".restaurant_longitude").val());
             var description=$(".restaurant_description").val();
             var phonenumber=$(".restaurant_phone").val();
-            database.collection('vendors').doc(id).update({
-                'title': restaurantname,
-                'description': description,
-                'latitude': latitude,
-                'longitude': longitude,
-                'location': address,
-                'photo': photo,
-                'categoryID': categoryIDs,
-                'categoryTitle': categoryTitles,
-                'phonenumber': phonenumber
-            }).then(function(result) {
-                window.location.href='{{ route("restaurants")}}';
+            
+            // Update restaurant via AJAX
+            $.ajax({
+                url: '/restaurants/' + id,
+                type: 'PUT',
+                data: {
+                    title: restaurantname,
+                    description: description,
+                    latitude: latitude,
+                    longitude: longitude,
+                    location: address,
+                    photo: photo,
+                    categoryID: categoryIDs,
+                    categoryTitle: categoryTitles,
+                    phonenumber: phonenumber,
+                    _token: '{{csrf_token()}}'
+                },
+                success: function(response) {
+                    if(response.success) {
+                        window.location.href='{{ route("restaurants")}}';
+                    } else {
+                        alert('Error updating restaurant: ' + (response.message || 'Unknown error'));
+                    }
+                },
+                error: function() {
+                    alert('Error updating restaurant');
+                }
             });
         })
     })
@@ -1149,68 +1280,31 @@
         reader.readAsDataURL(f);
     }
     async function getStoreNameFunction(vendorId) {
-        var vendorName='';
-        await database.collection('vendors').where('id','==',vendorId).get().then(async function(snapshots) {
-            if(!snapshots.empty) {
-                var vendorData=snapshots.docs[0].data();
-                vendorName=vendorData.title;
-                $('.restaurantTitle').html('{{trans("lang.restaurant_plural")}} - '+vendorName);
-                if(vendorData.dine_in_active==true) {
-                    $(".dine_in_future").show();
+        var vendorName = '';
+        return $.ajax({
+            url: '/restaurants/' + vendorId + '/data',
+            type: 'GET',
+            success: function(response) {
+                if(response.success && response.data) {
+                    vendorName = response.data.title;
+                    $('.restaurantTitle').html('{{trans("lang.restaurant_plural")}} - ' + vendorName);
+                    if(response.data.dine_in_active == true) {
+                        $(".dine_in_future").show();
+                    }
                 }
             }
         });
-        return vendorName;
     }
+    
+    // These functions are now handled by the main stats AJAX call in document.ready
     async function getTotalOrders() {
-        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').get().then(async function(orderSnapshots) {
-            var paymentData=orderSnapshots.docs;
-            $("#total_orders").text(paymentData.length);
-        })
+        // Stats already loaded via /restaurants/{id}/stats endpoint
     }
     async function getTotalEarnings() {
-        var totalEarning=0;
-        var adminCommission=0;
-        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').where('status','in',["restaurantorders Completed"]).get().then(async function(orderSnapshots) {
-            var paymentData=orderSnapshots.docs;
-            paymentData.forEach((order) => {
-                var orderData=order.data();
-                var price=0;
-                if(orderData.adminCommission!=undefined) {
-                    var commission=parseInt(orderData.adminCommission);
-                    adminCommission=commission+adminCommission;
-                }
-                orderData.products.forEach((product) => {
-                    if(product.price>0&&product.quantity!=0) {
-                        var productTotal=parseInt(product.price)*parseInt(product.quantity);
-                        price=price+productTotal;
-                    }
-                })
-                totalEarning=totalEarning+price;
-            })
-            if(currencyAtRight) {
-                totalEarningwithCurrency=parseFloat(totalEarning).toFixed(decimal_degits)+""+currentCurrency;
-            } else {
-                totalEarningwithCurrency=currentCurrency+""+parseFloat(totalEarning).toFixed(decimal_degits);
-            }
-            $("#total_earnings").text(totalEarningwithCurrency);
-        })
-        return totalEarning;
+        // Stats already loaded via /restaurants/{id}/stats endpoint  
     }
-    async function getTotalpayment(driverID) {
-        var paid_price=0;
-        var total_price=0;
-        var remaining=0;
-        await database.collection('payouts').where('vendorID','==','<?php echo $id; ?>').get().then(async function(payoutSnapshots) {
-            payoutSnapshots.docs.forEach((payout) => {
-                var payoutData=payout.data();
-                if(payoutData.amount&&parseFloat(payoutData.amount)!=undefined&&parseFloat(payoutData.amount)!=''&&parseFloat(payoutData.amount)!=NaN) {
-                    paid_price=parseFloat(paid_price)+parseFloat(payoutData.amount);
-                }
-            })
-        });
-        $("#total_payment").text(paid_price);
-        return paid_price;
+    async function getTotalpayment() {
+        // Stats already loaded via /restaurants/{id}/stats endpoint
     }
     $("#changeSubscriptionModal").on('shown.bs.modal',function() {
         getSubscriptionPlan();
