@@ -150,23 +150,39 @@ $(document).ready(function() {
 			allowClear: true
 		});
 	});
-    var database = firebase.firestore();
     var photo = "";
     var fileName='';
     var user_active_deactivate = false;
-    var createdAt = firebase.firestore.FieldValue.serverTimestamp();
-    var storageRef = firebase.storage().ref('images');
-    var storage = firebase.storage();
+    
     $(document).ready(function() {
       jQuery("#data-table_processing").show();
       jQuery("#data-table_processing").hide();
-      database.collection('zone').where('publish', '==', true).orderBy('name','asc').get().then(async function (snapshots) {
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            $('#zone').append($("<option></option>")
-                .attr("value", data.id)
-                .text(data.name));
-        })
+      
+      // Load zones from SQL
+      $.ajax({
+        url: '{{route("drivers.zones")}}',
+        type: 'GET',
+        success: function(response) {
+            console.log('Zone response:', response);
+            if(response.success && response.data) {
+                console.log('Total zones received:', response.data.length);
+                console.log('Published zones count:', response.published_zones);
+                response.data.forEach(function(data) {
+                    console.log('Adding zone:', data.id, data.name, 'publish:', data.publish);
+                    $('#zone').append($("<option></option>")
+                        .attr("value", data.id)
+                        .text(data.name));
+                });
+                console.log('Zone dropdown now has', $('#zone option').length - 1, 'zones'); // -1 for placeholder
+            } else {
+                console.error('Zone loading failed:', response);
+                alert('Error loading zones. Please check console.');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error loading zones:', error, xhr.responseText);
+            alert('Error loading zones: ' + error + '. Check console for details.');
+        }
       });
       $('#phone_chk').on('keypress',function(event){
         if (!(event.which >= 48 && event.which <= 57)) {
@@ -177,125 +193,114 @@ $(document).ready(function() {
           return true;
         }
       });
-      $(".save-form-btn").click( async function() {
+      $(".save-form-btn").click(async function() {
         var userFirstName = $(".user_first_name").val();
         var userLastName = $(".user_last_name").val();
         var email = $(".user_email").val();
         var password = $(".user_password").val();
         var country_code = $("#country_selector").val();
         var userPhone = $(".user_phone").val();
-        var active = $(".user_active").is(":checked");
         var zoneId = $('#zone option:selected').val();
         user_active_deactivate = false;
         if ($("#is_active").is(':checked')) {
           user_active_deactivate = true;
         }
-        var latitude = parseFloat($(".user_latitude").val());
-        var longitude = parseFloat($(".user_longitude").val());
+        var latitude = parseFloat($(".user_latitude").val()) || 0;
+        var longitude = parseFloat($(".user_longitude").val()) || 0;
         var location = {
           'latitude': latitude,
           'longitude': longitude
         };
-        var id = "<?php echo uniqid(); ?>";
+        
+        // Validation
         if (userFirstName == '') {
           $(".error_top").show();
           $(".error_top").html("");
           $(".error_top").append("<p>{{trans('lang.enter_owners_name_error')}}</p>");
           window.scrollTo(0, 0);
+          return;
         } else if (userLastName == '') {
           $(".error_top").show();
           $(".error_top").html("");
           $(".error_top").append("<p>{{trans('lang.enter_owners_last_name_error')}}</p>");
           window.scrollTo(0, 0);
+          return;
         } else if (email == '') {
           $(".error_top").show();
           $(".error_top").html("");
           $(".error_top").append("<p>{{trans('lang.enter_owners_email')}}</p>");
           window.scrollTo(0, 0);
+          return;
         } else if (userPhone == '') {
           $(".error_top").show();
           $(".error_top").html("");
           $(".error_top").append("<p>{{trans('lang.enter_owners_phone')}}</p>");
           window.scrollTo(0, 0);
+          return;
         } else if (zoneId == '') {
           $(".error_top").show();
           $(".error_top").html("");
           $(".error_top").append("<p>{{trans('lang.select_zone_help')}}</p>");
           window.scrollTo(0, 0);
+          return;
         }
-        else {
-         jQuery("#data-table_processing").show();
-          firebase.auth().createUserWithEmailAndPassword(email, password)
-            .then(function(firebaseUser) {
-              id = firebaseUser.user.uid;
-               storeImageData().then(IMG => {
-              database.collection('users').doc(id).set({
-                'appIdentifier':"web",
-                'isDocumentVerify':false,
-                'id': id,
-                'firstName': userFirstName,
-                'lastName': userLastName,
-                'email': email,
-                'countryCode': country_code ,
-                'phoneNumber': userPhone,
-                'isActive': false,
-                'isDocumentVerify':false,
-                'profilePictureURL': IMG,
-                'provider': 'email',
-                'location': location,
-                'role': 'driver',
-                'active': user_active_deactivate,
-                'createdAt': createdAt,
-                'zoneId': zoneId
-              }).then(async function(result) {
-                console.log('✅ Driver saved successfully, now logging activity...');
-                try {
+        
+        jQuery("#data-table_processing").show();
+        
+        // Prepare driver data
+        var driverData = {
+            firstName: userFirstName,
+            lastName: userLastName,
+            email: email,
+            phoneNumber: userPhone,
+            countryCode: country_code,
+            profilePictureURL: photo,
+            location: location,
+            zoneId: zoneId,
+            active: user_active_deactivate,
+            isActive: false,
+            isDocumentVerify: false,
+            appIdentifier: 'web',
+            provider: 'email',
+            role: 'driver',
+            _token: '{{csrf_token()}}'
+        };
+        
+        // Create driver via AJAX SQL
+        $.ajax({
+            url: '{{route("drivers.create.post")}}',
+            type: 'POST',
+            data: driverData,
+            success: function(response) {
+                if(response.success) {
+                    console.log('✅ Driver created successfully');
                     if (typeof logActivity === 'function') {
-                        console.log('🔍 Calling logActivity for driver creation...');
-                        await logActivity('drivers', 'created', 'Created new driver: ' + userFirstName + ' ' + userLastName);
-                        console.log('✅ Activity logging completed successfully');
-                    } else {
-                        console.error('❌ logActivity function is not available');
+                        logActivity('drivers', 'created', 'Created new driver: ' + userFirstName + ' ' + userLastName);
                     }
-                } catch (error) {
-                    console.error('❌ Error calling logActivity:', error);
-                }
-                jQuery("#data-table_processing").hide();
-                window.location.href = '{{ route("drivers")}}';
-              });
-                }).catch(err => {
+                    jQuery("#data-table_processing").hide();
+                    window.location.href = '{{ route("drivers")}}';
+                } else {
                     jQuery("#data-table_processing").hide();
                     $(".error_top").show();
                     $(".error_top").html("");
-                    $(".error_top").append("<p>" + err + "</p>");
+                    $(".error_top").append("<p>" + (response.message || 'Error creating driver') + "</p>");
                     window.scrollTo(0, 0);
-                });
-            }).catch(function(error) {
-               jQuery("#data-table_processing").hide();
-              $(".error_top").show();
-              $(".error_top").html("");
-              $(".error_top").append("<p>" + error + "</p>");
-              window.scrollTo(0, 0);
-            });
-        }
+                }
+            },
+            error: function(xhr) {
+                jQuery("#data-table_processing").hide();
+                $(".error_top").show();
+                $(".error_top").html("");
+                var errorMsg = 'Error creating driver';
+                if(xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                }
+                $(".error_top").append("<p>" + errorMsg + "</p>");
+                window.scrollTo(0, 0);
+            }
+        });
       })
     })
-    async function storeImageData() {
-        var newPhoto = '';
-        try {
-            if(photo!=""){
-            photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-            var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', {contentType: 'image/jpg'});
-            var downloadURL = await uploadTask.ref.getDownloadURL();
-            newPhoto = downloadURL;
-            photo = downloadURL;
-            }
-        } catch (error) {
-            console.log("ERR ===", error);
-            return;
-        }
-        return newPhoto;
-    }
     function handleFileSelect(evt) {
       var f = evt.target.files[0];
       var reader = new FileReader();

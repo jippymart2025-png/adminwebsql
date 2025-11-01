@@ -1171,7 +1171,7 @@
     async function getTotalEarnings() {
         var totalEarning=0;
         var adminCommission=0;
-        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').where('status','in',["restaurantorders Completed"]).get().then(async function(orderSnapshots) {
+        await database.collection('restaurant_orders').where('vendorID','==','<?php echo $id; ?>').where('status','in',["orders Completed"]).get().then(async function(orderSnapshots) {
             var paymentData=orderSnapshots.docs;
             paymentData.forEach((order) => {
                 var orderData=order.data();

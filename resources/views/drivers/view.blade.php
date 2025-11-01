@@ -180,36 +180,61 @@
 @section('scripts')
 <script>
     var id = "<?php echo $id; ?>";
-    var database = firebase.firestore();
-    var ref = database.collection('users').where("id", "==", id);
     var photo = "";
     var placeholderImage = '';
-    var placeholder = database.collection('settings').doc('placeHolderImage');
-    placeholder.get().then(async function (snapshotsimage) {
-        var placeholderImageData = snapshotsimage.data();
-        placeholderImage = placeholderImageData.image;
-    })
     var currentCurrency = '';
     var currencyAtRight = false;
     var decimal_degits = 0;
-    var refCurrency = database.collection('currencies').where('isActive', '==', true);
-    refCurrency.get().then(async function (snapshots) {
-        var currencyData = snapshots.docs[0].data();
-        currentCurrency = currencyData.symbol;
-        currencyAtRight = currencyData.symbolAtRight;
-        if (currencyData.decimal_degits) {
-            decimal_degits = currencyData.decimal_degits;
+    var emailTemplatesData = null;
+    
+    // Load placeholder image from SQL
+    $.ajax({
+        url: '{{route("vendors.placeholder-image")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.image) {
+                placeholderImage = response.image;
+            }
         }
     });
-    var email_templates = database.collection('email_templates').where('type', '==', 'wallet_topup');
-    var emailTemplatesData = null;
+    
+    // Load currency from SQL
+    $.ajax({
+        url: '{{url("/payments/currency")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.data) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+                decimal_degits = response.data.decimal_degits || 0;
+            }
+        }
+    });
+    
+    // Load email template from SQL
+    $.ajax({
+        url: '{{url("/api/email-templates/wallet_topup")}}',
+        type: 'GET',
+        success: function(response) {
+            if(response.success && response.template) {
+                emailTemplatesData = response.template;
+            }
+        }
+    });
+    
     $(document).ready(async function () {
         jQuery("#data-table_processing").show();
-        await email_templates.get().then(async function (snapshots) {
-            emailTemplatesData = snapshots.docs[0].data();
-        });
-        ref.get().then(async function (snapshots) {
-            var driver = snapshots.docs[0].data();
+        
+        // Load driver data from SQL
+        console.log('Loading driver with ID:', id);
+        $.ajax({
+            url: '/drivers/' + id + '/data',
+            type: 'GET',
+            success: function(response) {
+                console.log('Driver data response:', response);
+                if(response.success && response.data) {
+                    var driver = response.data;
+                    console.log('Driver loaded successfully:', driver.firstName, driver.lastName);
             $(".driver_name").text(driver.firstName);
             if(driver.hasOwnProperty('email') && driver.email){
                 $(".email").text(shortEmail(driver.email));
@@ -242,9 +267,14 @@
             }
             $(".profile_image").html(image);
             if (driver.hasOwnProperty('zoneId') && driver.zoneId != '') {
-                database.collection('zone').doc(driver.zoneId).get().then(async function (snapshots) {
-                    let zone = snapshots.data();
-                    $("#zone_name").text(zone.name);
+                $.ajax({
+                    url: '/api/zone/' + driver.zoneId,
+                    type: 'GET',
+                    success: function(zoneResponse) {
+                        if(zoneResponse.success && zoneResponse.zone) {
+                            $("#zone_name").text(zoneResponse.zone.name);
+                        }
+                    }
                 });
             }
             if (driver.userBankDetails) {
@@ -265,73 +295,87 @@
                 }
             }
             jQuery("#data-table_processing").hide();
-        });
-    })
+            } else {
+                console.error('Failed to load driver data:', response);
+                jQuery("#data-table_processing").hide();
+                alert('Error loading driver data: ' + (response.message || 'Unknown error'));
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error loading driver data:', {
+                status: status,
+                error: error,
+                responseText: xhr.responseText,
+                statusCode: xhr.status
+            });
+            jQuery("#data-table_processing").hide();
+            alert('Error loading driver data (HTTP ' + xhr.status + '). Check console for details.');
+        }
+    });
+    });
+    
     $(".save-form-btn").click(function () {
-        var date = firebase.firestore.FieldValue.serverTimestamp();
         var amount = $('#amount').val();
         if(amount==''){
             $('#wallet_error').text('{{trans("lang.add_wallet_amount_error")}}');
             return false;
         }
         var note = $('#note').val();
-        database.collection('users').where('id', '==', id).get().then(async function (snapshot) {
-            if (snapshot.docs.length > 0) {
-                var data = snapshot.docs[0].data();
-                var walletAmount = 0;
-                if (data.hasOwnProperty('wallet_amount') && !isNaN(data.wallet_amount) && data.wallet_amount != null) {
-                    walletAmount = data.wallet_amount;
-                }
-                var user_id = data.id;
-                var newWalletAmount = parseFloat(walletAmount) + parseFloat(amount);
-                database.collection('users').doc(id).update({
-                    'wallet_amount': newWalletAmount
-                }).then(function (result) {
-                    var tempId = database.collection("tmp").doc().id;
-                    database.collection('wallet').doc(tempId).set({
-                        'amount': parseFloat(amount),
-                        'date': date,
-                        'isTopUp': true,
-                        'id': tempId,
-                        'order_id': '',
-                        'payment_method': 'Wallet',
-                        'payment_status': 'success',
-                        'user_id': user_id,
-                        'note': note,
-                        'transactionUser': "driver",
-                    }).then(async function (result) {
-                        if (currencyAtRight) {
-                            amount = parseInt(amount).toFixed(decimal_degits) + "" + currentCurrency;
-                            newWalletAmount = newWalletAmount.toFixed(decimal_degits) + "" + currentCurrency;
-                        } else {
-                            amount = currentCurrency + "" + parseInt(amount).toFixed(decimal_degits);
-                            newWalletAmount = currentCurrency + "" + newWalletAmount.toFixed(decimal_degits);
-                        }
-                        var formattedDate = new Date();
-                        var month = formattedDate.getMonth() + 1;
-                        var day = formattedDate.getDate();
-                        var year = formattedDate.getFullYear();
-                        month = month < 10 ? '0' + month : month;
-                        day = day < 10 ? '0' + day : day;
-                        formattedDate = day + '-' + month + '-' + year;
+        
+        // Add wallet amount via AJAX
+        $.ajax({
+            url: '{{url("/api/users/wallet/add")}}',
+            type: 'POST',
+            data: {
+                user_id: id,
+                amount: amount,
+                note: note,
+                _token: '{{csrf_token()}}'
+            },
+            success: function(response) {
+                if(response.success) {
+                    var amountFormatted, newWalletFormatted;
+                    if(currencyAtRight) {
+                        amountFormatted = parseInt(amount).toFixed(decimal_degits) + currentCurrency;
+                        newWalletFormatted = parseFloat(response.newWalletAmount).toFixed(decimal_degits) + currentCurrency;
+                    } else {
+                        amountFormatted = currentCurrency + parseInt(amount).toFixed(decimal_degits);
+                        newWalletFormatted = currentCurrency + parseFloat(response.newWalletAmount).toFixed(decimal_degits);
+                    }
+                    
+                    var formattedDate = new Date();
+                    var month = formattedDate.getMonth() + 1;
+                    var day = formattedDate.getDate();
+                    var year = formattedDate.getFullYear();
+                    month = month < 10 ? '0' + month : month;
+                    day = day < 10 ? '0' + day : day;
+                    formattedDate = day + '-' + month + '-' + year;
+                    
+                    if(emailTemplatesData) {
                         var message = emailTemplatesData.message;
-                        message = message.replace(/{username}/g, data.firstName + ' ' + data.lastName);
+                        message = message.replace(/{username}/g, response.user.firstName + ' ' + response.user.lastName);
                         message = message.replace(/{date}/g, formattedDate);
-                        message = message.replace(/{amount}/g, amount);
+                        message = message.replace(/{amount}/g, amountFormatted);
                         message = message.replace(/{paymentmethod}/g, 'Wallet');
-                        message = message.replace(/{transactionid}/g, tempId);
-                        message = message.replace(/{newwalletbalance}/g, newWalletAmount);
-                        emailTemplatesData.message = message;
+                        message = message.replace(/{transactionid}/g, response.transaction_id);
+                        message = message.replace(/{newwalletbalance}/g, newWalletFormatted);
+                        
                         var url = "{{url('send-email')}}";
-                        var sendEmailStatus = await sendEmail(url, emailTemplatesData.subject, emailTemplatesData.message, [data.email]);
-                        if (sendEmailStatus) {
-                            window.location.reload();
-                        }
-                    })
-                })
-            }else{
-                        $('#user_account_not_found_error').text('{{trans("lang.user_detail_not_found")}}');
-             }
+                        sendEmail(url, emailTemplatesData.subject, message, [response.user.email]).then(function(sendEmailStatus) {
+                            if(sendEmailStatus) {
+                                window.location.reload();
+                            }
+                        });
+                    } else {
+                        window.location.reload();
+                    }
+                } else {
+                    $('#user_account_not_found_error').text(response.message || '{{trans("lang.user_detail_not_found")}}');
+                }
+            },
+            error: function() {
+                $('#user_account_not_found_error').text('{{trans("lang.error_adding_wallet_amount")}}');
+            }
         });
     });
 </script>

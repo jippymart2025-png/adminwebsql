@@ -350,6 +350,36 @@ Route::middleware(['permission:drivers,drivers.edit'])->group(function () {
     Route::post('/drivers/clear-order-request-data/{id}', [App\Http\Controllers\DriverController::class, 'clearOrderRequestData'])->name('drivers.clearOrderRequestData');
     Route::post('/drivers/clear-all-order-request-data', [App\Http\Controllers\DriverController::class, 'clearAllOrderRequestData'])->name('drivers.clearAllOrderRequestData');
 });
+
+// Driver SQL API routes
+Route::middleware(['permission:drivers,drivers'])->group(function () {
+    Route::get('/drivers/data', [App\Http\Controllers\DriverController::class, 'getDriversData'])->name('drivers.data');
+    Route::get('/drivers/zones', [App\Http\Controllers\DriverController::class, 'getZones'])->name('drivers.zones');
+    Route::get('/drivers/debug/{id}', [App\Http\Controllers\DriverController::class, 'debugDriver'])->name('drivers.debug');
+    Route::get('/drivers/{id}/data', [App\Http\Controllers\DriverController::class, 'getDriverById'])->name('drivers.getById');
+    Route::get('/drivers/{id}/stats', [App\Http\Controllers\DriverController::class, 'getDriverStats'])->name('drivers.stats');
+    Route::get('/drivers/{id}/documents', [App\Http\Controllers\DriverController::class, 'getDriverDocuments'])->name('drivers.documents');
+    Route::get('/drivers/{id}/payouts', [App\Http\Controllers\DriverController::class, 'getDriverPayouts'])->name('drivers.payouts');
+    Route::get('/api/document-types/driver', [App\Http\Controllers\DriverController::class, 'getDocumentTypes'])->name('drivers.document-types');
+    Route::get('/drivers/{id}/document-verification', [App\Http\Controllers\DriverController::class, 'getDocumentVerification'])->name('drivers.document-verification');
+});
+
+Route::middleware(['permission:drivers,drivers.create'])->group(function () {
+    Route::post('/drivers', [App\Http\Controllers\DriverController::class, 'createDriver'])->name('drivers.create.post');
+});
+
+Route::middleware(['permission:drivers,drivers.edit'])->group(function () {
+    Route::put('/drivers/{id}', [App\Http\Controllers\DriverController::class, 'updateDriver'])->name('drivers.update');
+    Route::post('/drivers/{id}/toggle-status', [App\Http\Controllers\DriverController::class, 'toggleDriverStatus'])->name('drivers.toggle-status');
+    Route::post('/drivers/{id}/clear-order-request-sql', [App\Http\Controllers\DriverController::class, 'clearOrderRequestDataSQL'])->name('drivers.clearOrderRequestDataSQL');
+    Route::post('/drivers/clear-all-order-request-sql', [App\Http\Controllers\DriverController::class, 'clearAllOrderRequestDataSQL'])->name('drivers.clearAllOrderRequestDataSQL');
+    Route::put('/drivers/{id}/document-verification', [App\Http\Controllers\DriverController::class, 'updateDocumentVerification'])->name('drivers.document-verification.update');
+});
+
+Route::middleware(['permission:drivers,drivers.delete'])->group(function () {
+    Route::delete('/drivers/{id}', [App\Http\Controllers\DriverController::class, 'deleteDriver'])->name('drivers.delete');
+});
+
 Route::get('/users/profile', [App\Http\Controllers\UserController::class, 'profile'])->name('users.profile');
 Route::post('/users/profile/update/{id}', [App\Http\Controllers\UserController::class, 'update'])->name('users.profile.update');
 
@@ -1162,15 +1192,6 @@ Route::middleware(['permission:admins,admin.users.delete'])->group(function () {
     Route::get('admin-users/delete/{id}', [App\Http\Controllers\UserController::class, 'deleteAdminUsers'])->name('admin.users.delete');
 
 });
-Route::middleware(['permission:zone,zone.list'])->group(function () {
-    Route::get('zone', [App\Http\Controllers\ZoneController::class, 'index'])->name('zone');
-});
-Route::middleware(['permission:zone,zone.create'])->group(function () {
-    Route::get('/zone/create', [App\Http\Controllers\ZoneController::class, 'create'])->name('zone.create');
-});
-Route::middleware(['permission:zone,zone.edit'])->group(function () {
-    Route::get('/zone/edit/{id}', [App\Http\Controllers\ZoneController::class, 'edit'])->name('zone.edit');
-});
 Route::middleware(['permission:documents,documents.edit'])->group(function () {
     Route::get('/documents/edit/{id}', [App\Http\Controllers\DocumentController::class, 'edit'])->name('documents.edit');
 });
@@ -1298,6 +1319,67 @@ Route::post('/vendors/import', [App\Http\Controllers\RestaurantController::class
 
 Route::get('/vendors/download-template', [App\Http\Controllers\RestaurantController::class, 'downloadVendorsTemplate'])->name('vendors.download-template');
 
+// Vendor API routes for SQL database
+// Note: Specific routes must come BEFORE wildcard routes
+Route::middleware(['permission:vendors,vendors'])->group(function () {
+    Route::get('/vendors/data', [App\Http\Controllers\RestaurantController::class, 'getVendorsData'])->name('vendors.data');
+    Route::get('/vendors/zones', [App\Http\Controllers\RestaurantController::class, 'getZones'])->name('vendors.zones');
+    Route::get('/vendors/subscription-plans', [App\Http\Controllers\RestaurantController::class, 'getSubscriptionPlans'])->name('vendors.subscription-plans');
+    Route::get('/vendors/placeholder-image', [App\Http\Controllers\RestaurantController::class, 'getPlaceholderImage'])->name('vendors.placeholder-image');
+});
+
+// Debug route (place before wildcard routes)
+Route::get('/vendors/debug/{id}', [App\Http\Controllers\RestaurantController::class, 'debugVendor'])->name('vendors.debug');
+
+// Vendor data endpoint - accessible by vendors module access (used by both view and edit pages)
+Route::middleware(['permission:vendors,vendors'])->group(function () {
+    Route::get('/vendors/{id}/data', [App\Http\Controllers\RestaurantController::class, 'getVendorById'])->name('vendors.getById');
+});
+
+Route::middleware(['permission:vendors,vendors.edit'])->group(function () {
+    Route::put('/vendors/{id}', [App\Http\Controllers\RestaurantController::class, 'updateVendor'])->name('vendors.update');
+    Route::post('/vendors/{id}/toggle-status', [App\Http\Controllers\RestaurantController::class, 'toggleVendorStatus'])->name('vendors.toggle-status');
+});
+
+Route::middleware(['permission:vendors,vendors.create'])->group(function () {
+    Route::post('/vendors', [App\Http\Controllers\RestaurantController::class, 'createVendor'])->name('vendors.create.post');
+});
+
+Route::middleware(['permission:vendors,vendors.delete'])->group(function () {
+    Route::delete('/vendors/{id}', [App\Http\Controllers\RestaurantController::class, 'deleteVendor'])->name('vendors.delete');
+});
+
+// Restaurant API routes for SQL database
+Route::middleware(['permission:restaurants,restaurants'])->group(function () {
+    Route::get('/restaurants/data', [App\Http\Controllers\RestaurantController::class, 'getRestaurantsData'])->name('restaurants.data');
+    Route::get('/restaurants/categories', [App\Http\Controllers\RestaurantController::class, 'getCategories'])->name('restaurants.categories');
+    Route::get('/restaurants/cuisines', [App\Http\Controllers\RestaurantController::class, 'getCuisines'])->name('restaurants.cuisines');
+    Route::get('/restaurants/{id}/data', [App\Http\Controllers\RestaurantController::class, 'getRestaurantById'])->name('restaurants.getById');
+    Route::get('/restaurants/{id}/stats', [App\Http\Controllers\RestaurantController::class, 'getRestaurantStats'])->name('restaurants.stats');
+    Route::get('/api/users/{id}', [App\Http\Controllers\RestaurantController::class, 'getUserById'])->name('users.getById');
+    Route::get('/api/users/{id}/wallet-balance', [App\Http\Controllers\RestaurantController::class, 'getWalletBalance'])->name('users.wallet-balance');
+    Route::post('/api/users/wallet/add', [App\Http\Controllers\RestaurantController::class, 'addWalletAmount'])->name('users.wallet.add');
+    Route::get('/api/users/{id}/subscription-history', [App\Http\Controllers\RestaurantController::class, 'getSubscriptionHistory'])->name('users.subscription-history');
+    Route::get('/api/email-templates/{type}', [App\Http\Controllers\RestaurantController::class, 'getEmailTemplate'])->name('email-templates.get');
+});
+
+// Zone API endpoint (public or with minimal permission)
+Route::get('/api/zone/{id}', [App\Http\Controllers\RestaurantController::class, 'getZoneById'])->name('zone.getById');
+
+// Restaurant create endpoint
+Route::middleware(['permission:restaurants,restaurants.create'])->group(function () {
+    Route::post('/api/restaurants/create', [App\Http\Controllers\RestaurantController::class, 'createRestaurant'])->name('restaurants.create.api');
+});
+
+Route::middleware(['permission:restaurants,restaurants.edit'])->group(function () {
+    Route::put('/restaurants/{id}', [App\Http\Controllers\RestaurantController::class, 'updateRestaurant'])->name('restaurants.update');
+    Route::post('/restaurants/{id}/toggle-status', [App\Http\Controllers\RestaurantController::class, 'toggleRestaurantStatus'])->name('restaurants.toggle-status');
+    Route::post('/restaurants/{id}/toggle-open', [App\Http\Controllers\RestaurantController::class, 'toggleRestaurantOpenStatus'])->name('restaurants.toggle-open');
+});
+
+Route::middleware(['permission:restaurants,restaurants.delete'])->group(function () {
+    Route::delete('/restaurants/{id}', [App\Http\Controllers\RestaurantController::class, 'deleteRestaurant'])->name('restaurants.delete');
+});
 
 // Restaurant bulk import routes
 

@@ -924,10 +924,7 @@ foreach ($countries as $keycountry => $valuecountry) {
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script>
-    var createdAt=firebase.firestore.FieldValue.serverTimestamp();
-    var database=firebase.firestore();
-    var ref_deliverycharge=database.collection('settings').doc("DeliveryCharge");
-    var storageRef=firebase.storage().ref('images');
+    // SQL-based implementation (no Firebase)
     var photo="";
     var menuPhotoCount=0;
     var restaurantMenuPhotos="";
@@ -963,59 +960,88 @@ foreach ($countries as $keycountry => $valuecountry) {
     var story_thumbnail='';
     var story_thumbnail_filename='';
     var storyCount=0;
-    var storyRef=firebase.storage().ref('Story');
-    var storyImagesRef=firebase.storage().ref('Story/images');
-    var restaurant_id=database.collection("tmp").doc().id;
-
-    database.collection('settings').doc("AdminCommission").get().then(async function(snapshots) {
-        var adminCommissionSettings=snapshots.data();
-        $(".commission_fix").val(adminCommissionSettings.fix_commission);
-        $("#commission_type").val(adminCommissionSettings.commissionType);
-    });
-    database.collection('settings').doc("story").get().then(async function(snapshots) {
-        var story_data=snapshots.data();
-        if(story_data.isEnabled) {
-            $("#story_upload_div").show();
-        }
-        storevideoDuration=story_data.videoDuration;
-    });
-
-    database.collection('zone').where('publish','==',true).orderBy('name','asc').get().then(async function(snapshots) {
-        snapshots.docs.forEach((listval) => {
-            var data=listval.data();
-            var area=[];
-            data.area.forEach((location) => {
-                area.push({'latitude': location.latitude,'longitude': location.longitude});
-            });
-            $('#zone').append($("<option></option>")
-                .attr("value",data.id)
-                .attr("data-area",JSON.stringify(area))
-                .text(data.name));
-        })
-    });
-
-    var email_templates=database.collection('email_templates').where('type','==','new_vendor_signup');
-
-    var emailTemplatesData=null;
-
-    var adminEmail='';
-
-    var emailSetting=database.collection('settings').doc('emailSetting');
-
-
-    database.collection('settings').doc("specialDiscountOffer").get().then(async function(snapshots) {
-        var specialDiscountOffer=snapshots.data();
-        specialDiscountOfferisEnable=specialDiscountOffer.isEnable;
-    });
-
-
+    var restaurant_id = 'rest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    var specialDiscountOfferisEnable = false;
     var currentCurrency='';
     var currencyAtRight=false;
-    var refCurrency=database.collection('currencies').where('isActive','==',true);
-    refCurrency.get().then(async function(snapshots) {
-        var currencyData=snapshots.docs[0].data();
-        currentCurrency=currencyData.symbol;
-        currencyAtRight=currencyData.symbolAtRight;
+    
+    // Load admin commission from SQL
+    $.ajax({
+        url: '/api/settings/AdminCommission',
+        method: 'GET',
+        success: function(response) {
+            if (response && response.fix_commission) {
+                $(".commission_fix").val(response.fix_commission);
+                $("#commission_type").val(response.commissionType);
+            }
+        },
+        error: function() {
+            $(".commission_fix").val(12);
+            $("#commission_type").val('Percent');
+        }
+    });
+
+    // Load zones from SQL with area data
+    console.log('Loading zones from SQL...');
+    $.ajax({
+        url: '{{ route("vendors.zones") }}',
+        method: 'GET',
+        success: function(response) {
+            console.log('Zones loaded:', response.data);
+            if (response.success && response.data) {
+                // Get full zone data including area from database
+                response.data.forEach(function(zone) {
+                    // Fetch complete zone data with area
+                    $.ajax({
+                        url: '/api/zone/' + zone.id,
+                        method: 'GET',
+                        success: function(zoneData) {
+                            var area = [];
+                            if (zoneData.area) {
+                                try {
+                                    var areaData = typeof zoneData.area === 'string' ? JSON.parse(zoneData.area) : zoneData.area;
+                                    if (Array.isArray(areaData)) {
+                                        areaData.forEach((location) => {
+                                            area.push({'latitude': location.latitude, 'longitude': location.longitude});
+                                        });
+                                    }
+                                } catch(e) {
+                                    console.error('Error parsing zone area:', e);
+                                }
+                            }
+                            $('#zone').append($("<option></option>")
+                                .attr("value", zoneData.id)
+                                .attr("data-area", JSON.stringify(area))
+                                .text(zoneData.name));
+                        },
+                        error: function() {
+                            // Fallback - add without area data
+                            $('#zone').append($("<option></option>")
+                                .attr("value", zone.id)
+                                .attr("data-area", "[]")
+                                .text(zone.name));
+                        }
+                    });
+                });
+            }
+        }
+    });
+
+    // Load currency from SQL
+    $.ajax({
+        url: '/payments/currency',
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.data) {
+                currentCurrency = response.data.symbol;
+                currencyAtRight = response.data.symbolAtRight;
+            }
+        },
+        error: function() {
+            currentCurrency = '$';
+            currencyAtRight = false;
+        }
     });
 
 
@@ -1030,86 +1056,75 @@ foreach ($countries as $keycountry => $valuecountry) {
 
         jQuery("#data-table_processing").show();
 
-        await email_templates.get().then(async function(snapshots) {
-            emailTemplatesData=snapshots.docs[0].data();
+        // Load categories from SQL
+        $.ajax({
+            url: '{{ route("restaurants.categories") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success && response.data) {
+                    response.data.forEach(function(cat) {
+                        $('#restaurant_cuisines').append($("<option></option>")
+                            .attr("value", cat.id)
+                            .text(cat.title));
+                    });
+                }
+            }
         });
 
-        await emailSetting.get().then(async function(snapshots) {
-            var emailSettingData=snapshots.data();
-
-            adminEmail=emailSettingData.userName;
+        // Load vendor cuisines from SQL
+        $.ajax({
+            url: '{{ route("restaurants.cuisines") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success && response.data) {
+                    response.data.forEach(function(cuisine) {
+                        $('#restaurant_vendor_cuisines').append($('<option></option>')
+                            .attr('value', cuisine.id)
+                            .text(cuisine.title));
+                    });
+                }
+            },
+            error: function(error) {
+                console.error('Error fetching vendor_cuisines:', error);
+            }
         });
 
-        database.collection('vendor_categories').where('publish','==',true).get().then(async function(snapshots) {
-            snapshots.docs.forEach((listval) => {
-                var data=listval.data();
-                $('#restaurant_cuisines').append($("<option></option>")
-                    .attr("value",data.id)
-                    .text(data.title));
-            })
-        });
-        // Add vendor_cuisines dropdown population
-        database.collection('vendor_cuisines').where('publish','==',true).get().then(async function(snapshots) {
-            snapshots.docs.forEach((listval) => {
-                var data = listval.data();
-                $('#restaurant_vendor_cuisines').append($('<option></option>')
-                    .attr('value', data.id)
-                    .text(data.title));
-            });
-        }).catch(function(error) {
-            console.error('Error fetching vendor_cuisines:', error);
-        });
-        database.collection('users').where('role','==','vendor').get().then(async function(snapshots) {
-            console.log('Found vendors:', snapshots.docs.length);
-            if (snapshots.docs.length === 0) {
-                console.log('No vendors found in database');
-                // Add a placeholder option
+        // Load vendors from SQL (users with role=vendor and no vendorID)
+        $.ajax({
+            url: '{{ route("vendors.data") }}?length=1000',
+            method: 'GET',
+            success: function(response) {
+                console.log('Found vendors:', response.data.length);
+                if (response.data.length === 0) {
+                    console.log('No vendors found in database');
+                    $('#restaurant_vendors').append($("<option></option>")
+                        .attr("value", "")
+                        .text("No vendors available"));
+                } else {
+                    response.data.forEach(function(vendor) {
+                        console.log('Vendor data:', vendor);
+                        // Only show vendors without existing vendorID
+                        if (!vendor.vendorID || vendor.vendorID == "" || vendor.vendorID == null) {
+                            $('#restaurant_vendors').append($("<option></option>")
+                                .attr("value", vendor.id)
+                                .text(vendor.fullName));
+                            console.log('Added vendor option:', vendor.fullName, 'with ID:', vendor.id);
+                        } else {
+                            console.log('Skipping vendor:', vendor.fullName, '- vendorID:', vendor.vendorID);
+                        }
+                    });
+                }
+                console.log('Total vendor options:', $('#restaurant_vendors option').length);
+            },
+            error: function(error) {
+                console.error('Error fetching vendors:', error);
                 $('#restaurant_vendors').append($("<option></option>")
                     .attr("value", "")
-                    .text("No vendors available"));
-            } else {
-                snapshots.docs.forEach((listval) => {
-                    var data = listval.data();
-                    console.log('Vendor data:', data);
-                    if ((data.vendorID == "" || data.vendorID == null) && data.firstName != "") {
-                        $('#restaurant_vendors').append($("<option></option>")
-                            .attr("value", data.id)
-                            .text(data.firstName + " " + data.lastName));
-                        console.log('Added vendor option:', data.firstName + " " + data.lastName, 'with ID:', data.id);
-                    } else {
-                        console.log('Skipping vendor:', data.firstName, '- vendorID:', data.vendorID);
-                    }
-                });
+                    .text("Error loading vendors"));
             }
-            console.log('Total vendor options:', $('#restaurant_vendors option').length);
-        }).catch(function(error) {
-            console.error('Error fetching vendors:', error);
-            // Add error option
-            $('#restaurant_vendors').append($("<option></option>")
-                .attr("value", "")
-                .text("Error loading vendors"));
         });
+
         jQuery("#data-table_processing").hide();
-
-        ref_deliverycharge.get().then(async function(snapshots_charge) {
-            var deliveryChargeSettings=snapshots_charge.data();
-            try {
-                if(deliveryChargeSettings.vendor_can_modify) {
-                    $("#delivery_charges_per_km").val(deliveryChargeSettings.delivery_charges_per_km);
-                    $("#minimum_delivery_charges").val(deliveryChargeSettings.minimum_delivery_charges);
-                    $("#minimum_delivery_charges_within_km").val(deliveryChargeSettings.minimum_delivery_charges_within_km);
-                } else {
-                    $("#delivery_charges_per_km").val(deliveryChargeSettings.delivery_charges_per_km);
-                    $("#minimum_delivery_charges").val(deliveryChargeSettings.minimum_delivery_charges);
-                    $("#minimum_delivery_charges_within_km").val(deliveryChargeSettings.minimum_delivery_charges_within_km);
-                    $("#delivery_charges_per_km").prop('disabled',true);
-                    $("#minimum_delivery_charges").prop('disabled',true);
-                    $("#minimum_delivery_charges_within_km").prop('disabled',true);
-                }
-            } catch(error) {
-
-            }
-        });
 
         // 1. Filter dropdown options based on search
         $('#category_search').on('keyup', function() {
@@ -1616,37 +1631,38 @@ foreach ($countries as $keycountry => $valuecountry) {
                     'subscriptionTotalOrders': subscriptionOrderLimit
                 };
 
-                // Update user vendorID if not admin created
-                if (user_id !== "admin_created") {
-                    console.log('Updating user vendorID:', user_id, 'with restaurant ID:', restaurant_id);
-                    await database.collection('users').doc(user_id).update({
-                        'vendorID': restaurant_id,
-                    });
-                    console.log('User vendorID updated successfully');
-                } else {
-                    console.log('Skipping user update for admin created restaurant');
-                }
-
-                // Create restaurant
-                await database.collection('vendors').doc(restaurant_id).set(restaurantData);
-                console.log('Restaurant created successfully');
-
-                console.log('✅ Restaurant saved successfully, now logging activity...');
-                try {
-                    if (typeof logActivity === 'function') {
-                        console.log('🔍 Calling logActivity for restaurant creation...');
-                        await logActivity('restaurants', 'created', 'Created new restaurant: ' + restaurantname);
-                        console.log('✅ Activity logging completed successfully');
-                    } else {
-                        console.error('❌ logActivity function is not available');
+                // Create restaurant via SQL API
+                console.log('Creating restaurant via SQL...', restaurantData);
+                
+                $.ajax({
+                    url: '/api/restaurants/create',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        restaurant_id: restaurant_id,
+                        user_id: user_id,
+                        restaurantData: restaurantData,
+                        updateUserVendorID: user_id !== "admin_created"
+                    },
+                    success: function(response) {
+                        console.log('Restaurant created successfully');
+                        clearTimeout(saveTimeout);
+                        jQuery("#data-table_processing").hide();
+                        window.location.href = '{{ route("restaurants")}}';
+                    },
+                    error: function(error) {
+                        clearTimeout(saveTimeout);
+                        console.error('Error creating restaurant:', error);
+                        jQuery("#data-table_processing").hide();
+                        $(".error_top").show();
+                        $(".error_top").html("");
+                        var errorMsg = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : 'Error creating restaurant';
+                        $(".error_top").append("<p>" + errorMsg + "</p>");
+                        window.scrollTo(0, 0);
                     }
-                } catch (error) {
-                    console.error('❌ Error calling logActivity:', error);
-                }
-
-                clearTimeout(saveTimeout);
-                jQuery("#data-table_processing").hide();
-                window.location.href = '{{ route("restaurants")}}';
+                });
 
             } catch (error) {
                 clearTimeout(saveTimeout);
@@ -2358,36 +2374,34 @@ foreach ($countries as $keycountry => $valuecountry) {
     }
 
     async function getOwnerDetails(selectedOwnerId) {
-        var data='';
         try {
             console.log('Fetching owner details for ID:', selectedOwnerId);
-            await database.collection('users').doc(selectedOwnerId).get().then(async function(
-                snapshot) {
-                data=snapshot.data();
-                console.log('Owner details fetched:', data);
-            })
-            return data;
+            
+            // Fetch from SQL API
+            const response = await $.ajax({
+                url: '/vendors/' + selectedOwnerId + '/data',
+                method: 'GET'
+            });
+            
+            if (response.success && response.data) {
+                console.log('Owner details fetched from SQL:', response.data);
+                return response.data;
+            } else {
+                console.error('Failed to fetch owner details');
+                return null;
+            }
         } catch(error) {
             console.error('Error getting owner details:', error);
             return null;
         }
     }
 
+    // Note: Subscription plan logic removed - dine-in is always available
+    // If you need subscription-based features, add SQL query to check plan details
     $('#subscription_plan').on('change',function() {
-        var id=$(this).val();
-        database.collection('subscription_plans').where('id','==',id).get().then(async function(snapshot) {
-            var data=snapshot.docs[0].data();
-            if(data.type=="paid") {
-                if(data.features.dineIn==false) {
-                    $('#dine_in_div').addClass('d-none');
-                } else {
-                    $('#dine_in_div').removeClass('d-none');
-                }
-            } else {
-                $('#dine_in_div').removeClass('d-none');
-            }
-        })
-    })
+        // Show dine-in options by default
+        $('#dine_in_div').removeClass('d-none');
+    });
 
 </script>
 @endsection

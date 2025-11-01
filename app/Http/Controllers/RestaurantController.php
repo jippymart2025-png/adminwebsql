@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\DynamicEmail;
+use App\Models\AppUser;
+use App\Models\Vendor;
+use App\Models\Zone;
+use Illuminate\Support\Facades\DB;
 
 class RestaurantController extends Controller
 {
@@ -1457,6 +1461,1494 @@ class RestaurantController extends Controller
         } catch (\Exception $e) {
             \Log::error('Error generating restaurant template: ' . $e->getMessage());
             return back()->withErrors(['file' => 'Error generating template: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Get vendors data for DataTables (SQL-based)
+     */
+    public function getVendorsData(Request $request)
+    {
+        try {
+            $start = $request->input('start', 0);
+            $length = $request->input('length', 10);
+            $searchValue = $request->input('search.value', '');
+            $type = $request->input('type', 'all'); // all, pending, approved
+            
+            // Build base query - use subquery to get unique vendors by firebase_id (like Firebase did)
+            // This ensures we only get one record per unique vendor
+            $subQuery = DB::table('users')
+                ->select(DB::raw('MAX(id) as max_id'))
+                ->where('role', 'vendor')
+                ->whereNotNull('firebase_id')
+                ->where('firebase_id', '!=', '')
+                ->groupBy('firebase_id');
+            
+            // Apply type filter to subquery
+            if ($type === 'pending') {
+                $subQuery->where('active', '0');
+            } elseif ($type === 'approved') {
+                $subQuery->where('active', '1');
+            }
+            
+            // Get the IDs from subquery
+            $uniqueIds = $subQuery->pluck('max_id')->toArray();
+            
+            // Now build main query using those unique IDs
+            $query = AppUser::whereIn('id', $uniqueIds);
+            
+            // Apply additional filters if provided
+            if ($request->has('vendor_type') && $request->vendor_type != '') {
+                $query->where('vType', $request->vendor_type);
+            }
+            
+            if ($request->has('status') && $request->status != '') {
+                $query->where('active', $request->status === 'active' ? '1' : '0');
+            }
+            
+            if ($request->has('zone') && $request->zone != '') {
+                $query->where('zoneId', $request->zone);
+            }
+            
+            // Store zone sort preference for later
+            $zoneSort = $request->input('zone_sort', '');
+            
+            // Apply date range filter
+            // The createdAt field is stored as JSON string like "2025-10-16T07:13:41.487000Z"
+            // We need to strip quotes and compare
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $startDate = date('Y-m-d', strtotime($request->start_date));
+                $endDate = date('Y-m-d', strtotime($request->end_date));
+                
+                $query->whereRaw("DATE(REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ')) BETWEEN ? AND ?", 
+                    [$startDate, $endDate]);
+            }
+            
+            // Get total count before applying search
+            $totalRecords = $query->count();
+            
+            // Apply search filter
+            if (!empty($searchValue)) {
+                $query->where(function($q) use ($searchValue) {
+                    $q->where('firstName', 'like', "%{$searchValue}%")
+                      ->orWhere('lastName', 'like', "%{$searchValue}%")
+                      ->orWhere('email', 'like', "%{$searchValue}%")
+                      ->orWhere('phoneNumber', 'like', "%{$searchValue}%")
+                      ->orWhere(DB::raw("CONCAT(firstName, ' ', lastName)"), 'like', "%{$searchValue}%");
+                });
+            }
+            
+            $filteredRecords = $query->count();
+            
+            // Apply ordering
+            // If zone sort is requested, sort by zone name, otherwise by createdAt descending
+            if (!empty($zoneSort)) {
+                // Join with zone table to sort by zone name
+                $vendors = $query->leftJoin('zone', 'users.zoneId', '=', 'zone.id')
+                               ->select('users.*', 'zone.name as zone_name')
+                               ->orderBy('zone.name', $zoneSort)
+                               ->orderByRaw("REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' ') DESC")
+                               ->skip($start)
+                               ->take($length)
+                               ->get();
+            } else {
+                // Get paginated records - order by parsed createdAt in descending order
+                // Remove quotes and convert to proper datetime for sorting
+                $vendors = $query->orderByRaw("REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ') DESC")
+                               ->skip($start)
+                               ->take($length)
+                               ->get();
+            }
+            
+            // Build response data
+            $data = [];
+            foreach ($vendors as $vendor) {
+                // Parse createdAt date from JSON format "2025-10-16T07:13:41.487000Z"
+                $createdAtFormatted = '';
+                if ($vendor->createdAt) {
+                    try {
+                        // Remove quotes and parse the ISO date
+                        $dateStr = trim($vendor->createdAt, '"');
+                        $date = new \DateTime($dateStr);
+                        $createdAtFormatted = $date->format('M d, Y h:i A');
+                    } catch (\Exception $e) {
+                        $createdAtFormatted = $vendor->createdAt;
+                    }
+                }
+                
+                // Parse subscription expiry date similarly
+                $expiryDateFormatted = '';
+                if ($vendor->subscriptionExpiryDate) {
+                    try {
+                        $dateStr = trim($vendor->subscriptionExpiryDate, '"');
+                        $date = new \DateTime($dateStr);
+                        $expiryDateFormatted = $date->format('M d, Y');
+                    } catch (\Exception $e) {
+                        $expiryDateFormatted = $vendor->subscriptionExpiryDate;
+                    }
+                }
+                
+                $vendorData = [
+                    'id' => $vendor->firebase_id ?? $vendor->_id,
+                    'firstName' => $vendor->firstName ?? '',
+                    'lastName' => $vendor->lastName ?? '',
+                    'fullName' => trim(($vendor->firstName ?? '') . ' ' . ($vendor->lastName ?? '')),
+                    'email' => $vendor->email ?? '',
+                    'phoneNumber' => $vendor->phoneNumber ?? '',
+                    'countryCode' => $vendor->countryCode ?? '',
+                    'profilePictureURL' => $vendor->profilePictureURL ?? '',
+                    'active' => $vendor->active == '1' || $vendor->active === 'true' || $vendor->active === true,
+                    'zoneId' => $vendor->zoneId ?? '',
+                    'vType' => $vendor->vType ?? 'restaurant',
+                    'vendorID' => $vendor->vendorID ?? '',
+                    'subscriptionPlanId' => $vendor->subscriptionPlanId ?? '',
+                    'subscription_plan' => $vendor->subscription_plan ? json_decode($vendor->subscription_plan, true) : null,
+                    'subscriptionExpiryDate' => $expiryDateFormatted,
+                    'subscriptionExpiryDateRaw' => $vendor->subscriptionExpiryDate ?? '',
+                    'userBankDetails' => $vendor->userBankDetails ? json_decode($vendor->userBankDetails, true) : null,
+                    'createdAt' => $createdAtFormatted,
+                    'createdAtRaw' => $vendor->createdAt ?? '',
+                    'isDocumentVerify' => $vendor->isDocumentVerify == '1' || $vendor->isDocumentVerify === 'true' || $vendor->isDocumentVerify === true,
+                ];
+                
+                $data[] = $vendorData;
+            }
+            
+            return response()->json([
+                'draw' => $request->input('draw'),
+                'recordsTotal' => $totalRecords,
+                'recordsFiltered' => $filteredRecords,
+                'data' => $data,
+                'vendor_count' => $filteredRecords
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error fetching vendors data: ' . $e->getMessage());
+            return response()->json([
+                'draw' => $request->input('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Get zones for vendor filter
+     */
+    public function getZones()
+    {
+        try {
+            // Get all zones first, then filter for publish = 1
+            $allZones = DB::table('zone')
+                      ->orderBy('name', 'asc')
+                      ->get();
+            
+            \Log::info('Total zones found: ' . $allZones->count());
+            
+            // Filter for published zones (handle different data types)
+            $zones = $allZones->filter(function($zone) {
+                return $zone->publish == 1 || 
+                       $zone->publish === '1' || 
+                       $zone->publish === true || 
+                       $zone->publish === 'true';
+            })->values();
+            
+            \Log::info('Published zones: ' . $zones->count());
+            
+            return response()->json([
+                'success' => true,
+                'data' => $zones,
+                'total_zones' => $allZones->count(),
+                'published_zones' => $zones->count()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching zones: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching zones: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get single zone with area data
+     */
+    public function getZoneById($id)
+    {
+        try {
+            $zone = DB::table('zone')->where('id', $id)->first();
+            
+            if (!$zone) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Zone not found'
+                ], 404);
+            }
+            
+            // Return zone with area as-is (already JSON string in database)
+            return response()->json([
+                'id' => $zone->id,
+                'name' => $zone->name,
+                'latitude' => $zone->latitude,
+                'longitude' => $zone->longitude,
+                'area' => $zone->area, // JSON string
+                'publish' => $zone->publish
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching zone: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get single vendor data by ID
+     */
+    public function getVendorById($id)
+    {
+        try {
+            // Try to find vendor by multiple ID fields
+            $vendor = AppUser::where(function($query) use ($id) {
+                $query->where('firebase_id', $id)
+                      ->orWhere('_id', $id);
+                
+                // Also try numeric ID if the input is numeric
+                if (is_numeric($id)) {
+                    $query->orWhere('id', $id);
+                }
+            })
+            ->where('role', 'vendor')
+            ->first();
+            
+            // Log for debugging
+            \Log::info('Looking for vendor with ID: ' . $id);
+            
+            if (!$vendor) {
+                \Log::warning('Vendor not found with ID: ' . $id);
+                
+                // Try to find any vendor to help debug
+                $anyVendor = AppUser::where('role', 'vendor')->first();
+                if ($anyVendor) {
+                    \Log::info('Sample vendor found - firebase_id: ' . ($anyVendor->firebase_id ?? 'NULL') . ', _id: ' . ($anyVendor->_id ?? 'NULL'));
+                }
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Vendor not found with ID: ' . $id
+                ], 404);
+            }
+            
+            \Log::info('Vendor found: ' . ($vendor->firstName ?? '') . ' ' . ($vendor->lastName ?? ''));
+            
+            // Parse dates from JSON format
+            $subscriptionExpiryDate = '';
+            $subscriptionExpiryDateFormatted = '';
+            if ($vendor->subscriptionExpiryDate) {
+                try {
+                    $dateStr = trim($vendor->subscriptionExpiryDate, '"');
+                    $date = new \DateTime($dateStr);
+                    $subscriptionExpiryDate = $date->format('Y-m-d\TH:i:s.u\Z');
+                    $subscriptionExpiryDateFormatted = $date->format('Y-m-d'); // For date input field
+                } catch (\Exception $e) {
+                    \Log::warning('Error parsing subscription expiry date: ' . $e->getMessage());
+                    $subscriptionExpiryDate = trim($vendor->subscriptionExpiryDate, '"');
+                    $subscriptionExpiryDateFormatted = '';
+                }
+            }
+            
+            // Parse userBankDetails
+            $userBankDetails = null;
+            if ($vendor->userBankDetails) {
+                try {
+                    if (is_string($vendor->userBankDetails)) {
+                        $userBankDetails = json_decode($vendor->userBankDetails, true);
+                    } else {
+                        $userBankDetails = $vendor->userBankDetails;
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning('Error parsing bank details: ' . $e->getMessage());
+                }
+            }
+            
+            // Parse subscription_plan
+            $subscriptionPlan = null;
+            if ($vendor->subscription_plan) {
+                try {
+                    if (is_string($vendor->subscription_plan)) {
+                        $subscriptionPlan = json_decode($vendor->subscription_plan, true);
+                    } else {
+                        $subscriptionPlan = $vendor->subscription_plan;
+                    }
+                } catch (\Exception $e) {
+                    \Log::warning('Error parsing subscription plan: ' . $e->getMessage());
+                }
+            }
+            
+            $vendorData = [
+                'id' => $vendor->firebase_id ?? $vendor->_id ?? $vendor->id,
+                'firstName' => $vendor->firstName ?? '',
+                'lastName' => $vendor->lastName ?? '',
+                'email' => $vendor->email ?? '',
+                'phoneNumber' => $vendor->phoneNumber ?? '',
+                'countryCode' => $vendor->countryCode ?? '',
+                'profilePictureURL' => $vendor->profilePictureURL ?? '',
+                'active' => $vendor->active == '1' || $vendor->active === 'true' || $vendor->active === true,
+                'zoneId' => $vendor->zoneId ?? '',
+                'vType' => $vendor->vType ?? 'restaurant',
+                'vendorID' => $vendor->vendorID ?? '',
+                'subscriptionPlanId' => $vendor->subscriptionPlanId ?? '',
+                'subscription_plan' => $subscriptionPlan,
+                'subscriptionExpiryDate' => $subscriptionExpiryDateFormatted, // For date input
+                'subscriptionExpiryDateRaw' => $vendor->subscriptionExpiryDate ?? '',
+                'userBankDetails' => $userBankDetails,
+                'provider' => $vendor->provider ?? 'email',
+                'isDocumentVerify' => $vendor->isDocumentVerify == '1' || $vendor->isDocumentVerify === 'true' || $vendor->isDocumentVerify === true,
+            ];
+            
+            \Log::info('Returning vendor data: ' . json_encode($vendorData));
+            
+            return response()->json([
+                'success' => true,
+                'data' => $vendorData
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching vendor: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching vendor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update vendor data
+     */
+    public function updateVendor(Request $request, $id)
+    {
+        try {
+            // Try to find vendor by multiple ID fields
+            $vendor = AppUser::where(function($query) use ($id) {
+                $query->where('firebase_id', $id)
+                      ->orWhere('_id', $id);
+                
+                // Also try numeric ID if the input is numeric
+                if (is_numeric($id)) {
+                    $query->orWhere('id', $id);
+                }
+            })
+            ->where('role', 'vendor')
+            ->first();
+            
+            \Log::info('Updating vendor with ID: ' . $id);
+            
+            if (!$vendor) {
+                \Log::warning('Vendor not found for update with ID: ' . $id);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Vendor not found with ID: ' . $id
+                ], 404);
+            }
+            
+            // Update vendor fields
+            if ($request->has('firstName')) $vendor->firstName = $request->firstName;
+            if ($request->has('lastName')) $vendor->lastName = $request->lastName;
+            if ($request->has('phoneNumber')) $vendor->phoneNumber = $request->phoneNumber;
+            if ($request->has('countryCode')) $vendor->countryCode = $request->countryCode;
+            if ($request->has('vType')) $vendor->vType = $request->vType;
+            if ($request->has('profilePictureURL')) $vendor->profilePictureURL = $request->profilePictureURL;
+            if ($request->has('active')) $vendor->active = $request->active ? '1' : '0';
+            if ($request->has('subscriptionPlanId')) $vendor->subscriptionPlanId = $request->subscriptionPlanId;
+            if ($request->has('subscription_plan')) $vendor->subscription_plan = json_encode($request->subscription_plan);
+            if ($request->has('subscriptionExpiryDate')) {
+                // Format date as JSON string like "2025-10-16T07:13:41.487000Z" if it's a regular date
+                $expiryDate = $request->subscriptionExpiryDate;
+                if (!str_starts_with($expiryDate, '"')) {
+                    try {
+                        $date = new \DateTime($expiryDate);
+                        $expiryDate = '"' . $date->format('Y-m-d\TH:i:s.u\Z') . '"';
+                    } catch (\Exception $e) {
+                        // Keep as is if parsing fails
+                    }
+                }
+                $vendor->subscriptionExpiryDate = $expiryDate;
+            }
+            if ($request->has('userBankDetails')) $vendor->userBankDetails = json_encode($request->userBankDetails);
+            
+            $vendor->save();
+            
+            // Update vendor business info if vendorID exists
+            if ($vendor->vendorID && $request->has('authorName')) {
+                $vendorBusiness = Vendor::find($vendor->vendorID);
+                if ($vendorBusiness) {
+                    $vendorBusiness->authorName = $request->authorName;
+                    if ($request->has('profilePictureURL')) {
+                        $vendorBusiness->authorProfilePic = $request->profilePictureURL;
+                    }
+                    if ($request->has('subscriptionExpiryDate')) {
+                        $vendorBusiness->subscriptionExpiryDate = $request->subscriptionExpiryDate;
+                    }
+                    $vendorBusiness->save();
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Vendor updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error updating vendor: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating vendor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Toggle vendor active status
+     */
+    public function toggleVendorStatus($id)
+    {
+        try {
+            // Try to find vendor by multiple ID fields
+            $vendor = AppUser::where(function($query) use ($id) {
+                $query->where('firebase_id', $id)
+                      ->orWhere('_id', $id);
+                
+                // Also try numeric ID if the input is numeric
+                if (is_numeric($id)) {
+                    $query->orWhere('id', $id);
+                }
+            })
+            ->where('role', 'vendor')
+            ->first();
+            
+            if (!$vendor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Vendor not found with ID: ' . $id
+                ], 404);
+            }
+            
+            $vendor->active = $vendor->active == '1' ? '0' : '1';
+            $vendor->save();
+            
+            return response()->json([
+                'success' => true,
+                'active' => $vendor->active == '1'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error toggling vendor status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error toggling vendor status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete vendor
+     */
+    public function deleteVendor($id)
+    {
+        try {
+            // Try to find vendor by multiple ID fields
+            $vendor = AppUser::where(function($query) use ($id) {
+                $query->where('firebase_id', $id)
+                      ->orWhere('_id', $id);
+                
+                // Also try numeric ID if the input is numeric
+                if (is_numeric($id)) {
+                    $query->orWhere('id', $id);
+                }
+            })
+            ->where('role', 'vendor')
+            ->first();
+            
+            if (!$vendor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Vendor not found with ID: ' . $id
+                ], 404);
+            }
+            
+            // Delete vendor and related data
+            // Note: This is a simplified version. You may need to delete related data from other tables
+            $vendor->delete();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Vendor deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting vendor: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting vendor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get subscription plans
+     */
+    public function getSubscriptionPlans()
+    {
+        try {
+            $plans = DB::table('subscription_plans')
+                      ->where('isEnable', 1)
+                      ->orderBy('name', 'asc')
+                      ->get();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $plans
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching subscription plans: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create new vendor
+     */
+    public function createVendor(Request $request)
+    {
+        try {
+            $request->validate([
+                'firstName' => 'required',
+                'lastName' => 'required',
+                'email' => 'required|email',
+                'password' => 'required|min:6',
+                'phoneNumber' => 'required',
+                'countryCode' => 'required'
+            ]);
+            
+            // Check if email already exists
+            $existingVendor = AppUser::where('email', $request->email)->first();
+            if ($existingVendor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email already exists'
+                ], 400);
+            }
+            
+            // Create vendor
+            $vendor = new AppUser();
+            $vendor->firstName = $request->firstName;
+            $vendor->lastName = $request->lastName;
+            $vendor->email = $request->email;
+            $vendor->password = Hash::make($request->password);
+            $vendor->phoneNumber = $request->phoneNumber;
+            $vendor->countryCode = $request->countryCode;
+            $vendor->role = 'vendor';
+            $vendor->vType = $request->vType ?? 'restaurant';
+            $vendor->active = $request->active ?? '0';
+            $vendor->profilePictureURL = $request->profilePictureURL ?? '';
+            $vendor->provider = 'email';
+            $vendor->appIdentifier = 'web';
+            $vendor->isDocumentVerify = '0';
+            // Store createdAt in same JSON format as Firebase: "2025-10-16T07:13:41.487000Z"
+            $vendor->createdAt = '"' . gmdate('Y-m-d\TH:i:s.u\Z') . '"';
+            
+            if ($request->has('subscriptionPlanId')) {
+                $vendor->subscriptionPlanId = $request->subscriptionPlanId;
+            }
+            if ($request->has('subscription_plan')) {
+                $vendor->subscription_plan = json_encode($request->subscription_plan);
+            }
+            if ($request->has('subscriptionExpiryDate')) {
+                $vendor->subscriptionExpiryDate = $request->subscriptionExpiryDate;
+            }
+            
+            // Generate unique firebase_id
+            $vendor->firebase_id = uniqid();
+            $vendor->_id = $vendor->firebase_id;
+            
+            $vendor->save();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Vendor created successfully',
+                'vendor_id' => $vendor->firebase_id
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error creating vendor: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating vendor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get placeholder image
+     */
+    public function getPlaceholderImage()
+    {
+        try {
+            $placeholder = DB::table('settings')
+                            ->where('key', 'placeHolderImage')
+                            ->first();
+            
+            return response()->json([
+                'success' => true,
+                'image' => $placeholder->value ?? ''
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching placeholder image: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create new restaurant
+     */
+    public function createRestaurant(Request $request)
+    {
+        try {
+            $restaurantData = $request->restaurantData;
+            $restaurant_id = $request->restaurant_id ?? uniqid('rest_');
+            $user_id = $request->user_id;
+            
+            // Helper function to convert boolean values
+            $toBool = function($value) {
+                if (is_bool($value)) return $value ? 1 : 0;
+                if (is_string($value)) {
+                    $value = strtolower($value);
+                    return ($value === 'true' || $value === '1') ? 1 : 0;
+                }
+                return $value ? 1 : 0;
+            };
+            
+            // Helper function to handle JSON encoding
+            $toJson = function($value, $default = []) {
+                if (!isset($value)) return json_encode($default);
+                return is_string($value) ? $value : json_encode($value);
+            };
+            
+            // Create restaurant record
+            $restaurant = new Vendor();
+            $restaurant->id = $restaurant_id;
+            $restaurant->title = $restaurantData['title'] ?? '';
+            $restaurant->description = $restaurantData['description'] ?? '';
+            $restaurant->latitude = floatval($restaurantData['latitude'] ?? 0);
+            $restaurant->longitude = floatval($restaurantData['longitude'] ?? 0);
+            $restaurant->location = $restaurantData['location'] ?? '';
+            $restaurant->photo = $restaurantData['photo'] ?? '';
+            $restaurant->photos = $toJson($restaurantData['photos'] ?? null, []);
+            $restaurant->phonenumber = $restaurantData['phonenumber'] ?? '';
+            $restaurant->countryCode = $restaurantData['countryCode'] ?? '';
+            $restaurant->zoneId = $restaurantData['zoneId'] ?? '';
+            $restaurant->author = $restaurantData['author'] ?? '';
+            $restaurant->authorName = $restaurantData['authorName'] ?? '';
+            $restaurant->authorProfilePic = $restaurantData['authorProfilePic'] ?? '';
+            $restaurant->categoryID = $toJson($restaurantData['categoryID'] ?? null, []);
+            $restaurant->categoryTitle = $toJson($restaurantData['categoryTitle'] ?? null, []);
+            $restaurant->vendorCuisineID = $restaurantData['vendorCuisineID'] ?? '';
+            
+            // Convert boolean fields to tinyint (0 or 1)
+            $restaurant->reststatus = $toBool($restaurantData['reststatus'] ?? 1);
+            $restaurant->isOpen = $toBool($restaurantData['isOpen'] ?? 1);
+            $restaurant->specialDiscountEnable = $toBool($restaurantData['specialDiscountEnable'] ?? 0);
+            $restaurant->enabledDiveInFuture = $toBool($restaurantData['enabledDiveInFuture'] ?? 0);
+            
+            $restaurant->workingHours = $toJson($restaurantData['workingHours'] ?? null, []);
+            $restaurant->filters = $toJson($restaurantData['filters'] ?? null, []);
+            $restaurant->adminCommission = $toJson($restaurantData['adminCommission'] ?? null, []);
+            $restaurant->specialDiscount = $toJson($restaurantData['specialDiscount'] ?? null, []);
+            $restaurant->restaurantCost = $restaurantData['restaurantCost'] ?? '';
+            $restaurant->restaurantMenuPhotos = $toJson($restaurantData['restaurantMenuPhotos'] ?? null, []);
+            $restaurant->openDineTime = $restaurantData['openDineTime'] ?? '';
+            $restaurant->closeDineTime = $restaurantData['closeDineTime'] ?? '';
+            $restaurant->subscriptionPlanId = $restaurantData['subscriptionPlanId'] ?? '';
+            $restaurant->subscription_plan = isset($restaurantData['subscription_plan']) ? $toJson($restaurantData['subscription_plan'], null) : null;
+            $restaurant->subscriptionExpiryDate = $restaurantData['subscriptionExpiryDate'] ?? '';
+            $restaurant->subscriptionTotalOrders = $restaurantData['subscriptionTotalOrders'] ?? '';
+            $restaurant->createdAt = '"' . gmdate('Y-m-d\TH:i:s.u\Z') . '"';
+            
+            $restaurant->save();
+            
+            // Update user vendorID if requested
+            if ($request->updateUserVendorID && $user_id && $user_id !== 'admin_created') {
+                $user = AppUser::where('firebase_id', $user_id)
+                             ->orWhere('_id', $user_id)
+                             ->where('role', 'vendor')
+                             ->first();
+                
+                if ($user) {
+                    $user->vendorID = $restaurant_id;
+                    $user->save();
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Restaurant created successfully',
+                'restaurant_id' => $restaurant_id
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error creating restaurant: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating restaurant: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get restaurants data for DataTables (SQL-based)
+     */
+    public function getRestaurantsData(Request $request)
+    {
+        try {
+            $start = $request->input('start', 0);
+            $length = $request->input('length', 10);
+            $searchValue = $request->input('search.value', '');
+            
+            // Build base query - get unique restaurants by id
+            $subQuery = DB::table('vendors')
+                ->select(DB::raw('MAX(id) as vendor_id'))
+                ->groupBy('id');
+            
+            $vendorIds = $subQuery->pluck('vendor_id')->toArray();
+            $query = Vendor::whereIn('id', $vendorIds);
+            
+            // Apply filters
+            if ($request->has('restaurant_type') && $request->restaurant_type != '') {
+                if ($request->restaurant_type === 'true') {
+                    $query->where('dine_in_active', '!=', '');
+                }
+            }
+            
+            if ($request->has('zone') && $request->zone != '') {
+                $query->where('zoneId', $request->zone);
+            }
+            
+            if ($request->has('vType') && $request->vType != '') {
+                $query->where('vType', $request->vType);
+            }
+            
+            // Apply date range filter
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $startDate = date('Y-m-d', strtotime($request->start_date));
+                $endDate = date('Y-m-d', strtotime($request->end_date));
+                $query->whereRaw("DATE(REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ')) BETWEEN ? AND ?", 
+                    [$startDate, $endDate]);
+            }
+            
+            $totalRecords = $query->count();
+            
+            // Apply search filter
+            if (!empty($searchValue)) {
+                $query->where(function($q) use ($searchValue) {
+                    $q->where('title', 'like', "%{$searchValue}%")
+                      ->orWhere('location', 'like', "%{$searchValue}%")
+                      ->orWhere('phonenumber', 'like', "%{$searchValue}%")
+                      ->orWhere('description', 'like', "%{$searchValue}%");
+                });
+            }
+            
+            $filteredRecords = $query->count();
+            
+            // Get counts for statistics
+            $totalRestaurants = Vendor::count();
+            $activeRestaurants = Vendor::where('reststatus', 1)->count();
+            $inactiveRestaurants = Vendor::where('reststatus', 0)->count();
+            
+            // Get new joined (last 30 days)
+            $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+            $newJoined = Vendor::whereRaw("DATE(REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ')) >= ?", [$thirtyDaysAgo])->count();
+            
+            // Apply ordering - descending by createdAt
+            $restaurants = $query->orderByRaw("REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ') DESC")
+                               ->skip($start)
+                               ->take($length)
+                               ->get();
+            
+            // Build response data
+            $data = [];
+            foreach ($restaurants as $restaurant) {
+                // Parse createdAt date
+                $createdAtFormatted = '';
+                if ($restaurant->createdAt) {
+                    try {
+                        $dateStr = trim($restaurant->createdAt, '"');
+                        $date = new \DateTime($dateStr);
+                        $createdAtFormatted = $date->format('M d, Y h:i A');
+                    } catch (\Exception $e) {
+                        $createdAtFormatted = $restaurant->createdAt;
+                    }
+                }
+                
+                $restaurantData = [
+                    'id' => $restaurant->id,
+                    'title' => $restaurant->title ?? '',
+                    'description' => $restaurant->description ?? '',
+                    'location' => $restaurant->location ?? '',
+                    'latitude' => $restaurant->latitude ?? 0,
+                    'longitude' => $restaurant->longitude ?? 0,
+                    'photo' => $restaurant->photo ?? '',
+                    'photos' => $restaurant->photos ? json_decode($restaurant->photos, true) : [],
+                    'phonenumber' => $restaurant->phonenumber ?? '',
+                    'zoneId' => $restaurant->zoneId ?? '',
+                    'author' => $restaurant->author ?? '',
+                    'authorName' => $restaurant->authorName ?? '',
+                    'authorProfilePic' => $restaurant->authorProfilePic ?? '',
+                    'categoryID' => $restaurant->categoryID ? json_decode($restaurant->categoryID, true) : [],
+                    'categoryTitle' => $restaurant->categoryTitle ? json_decode($restaurant->categoryTitle, true) : [],
+                    'reststatus' => $restaurant->reststatus == 1 || $restaurant->reststatus === 'true' || $restaurant->reststatus === true,
+                    'isOpen' => $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                    'reviewsCount' => $restaurant->reviewsCount ?? 0,
+                    'reviewsSum' => $restaurant->reviewsSum ?? 0,
+                    'createdAt' => $createdAtFormatted,
+                    'createdAtRaw' => $restaurant->createdAt ?? '',
+                    'vType' => $restaurant->vType ?? 'restaurant',
+                    'walletAmount' => $restaurant->walletAmount ?? 0,
+                ];
+                
+                $data[] = $restaurantData;
+            }
+            
+            return response()->json([
+                'draw' => $request->input('draw'),
+                'recordsTotal' => $totalRecords,
+                'recordsFiltered' => $filteredRecords,
+                'data' => $data,
+                'stats' => [
+                    'total' => $totalRestaurants,
+                    'active' => $activeRestaurants,
+                    'inactive' => $inactiveRestaurants,
+                    'new_joined' => $newJoined
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error fetching restaurants data: ' . $e->getMessage());
+            return response()->json([
+                'draw' => $request->input('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Get single restaurant data by ID
+     */
+    public function getRestaurantById($id)
+    {
+        try {
+            // Try to find by string ID column first (Firebase-style ID), then by numeric primary key
+            $restaurant = Vendor::where('id', $id)->first();
+            
+            if (!$restaurant && is_numeric($id)) {
+                // Fallback to numeric primary key if not found by string ID
+                $restaurant = Vendor::find($id);
+            }
+            
+            \Log::info('Looking for restaurant with ID: ' . $id);
+            
+            if (!$restaurant) {
+                \Log::warning('Restaurant not found with ID: ' . $id);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found with ID: ' . $id
+                ], 404);
+            }
+            
+            \Log::info('Restaurant found: ' . ($restaurant->title ?? ''));
+            
+            // Parse and format data
+            $restaurantData = [
+                'id' => $restaurant->id,
+                'title' => $restaurant->title ?? '',
+                'description' => $restaurant->description ?? '',
+                'location' => $restaurant->location ?? '',
+                'latitude' => $restaurant->latitude ?? 0,
+                'longitude' => $restaurant->longitude ?? 0,
+                'photo' => $restaurant->photo ?? '',
+                'photos' => $restaurant->photos ? json_decode($restaurant->photos, true) : [],
+                'phonenumber' => $restaurant->phonenumber ?? '',
+                'zoneId' => $restaurant->zoneId ?? '',
+                'author' => $restaurant->author ?? '',
+                'authorName' => $restaurant->authorName ?? '',
+                'authorProfilePic' => $restaurant->authorProfilePic ?? '',
+                'categoryID' => $restaurant->categoryID ? json_decode($restaurant->categoryID, true) : [],
+                'categoryTitle' => $restaurant->categoryTitle ? json_decode($restaurant->categoryTitle, true) : [],
+                'cuisineID' => $restaurant->cuisineID ?? '',
+                'cuisineTitle' => $restaurant->cuisineTitle ?? '',
+                'vendorCuisineID' => $restaurant->vendorCuisineID ?? '',
+                'reststatus' => $restaurant->reststatus == 1 || $restaurant->reststatus === 'true' || $restaurant->reststatus === true,
+                'isOpen' => $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                'reviewsCount' => $restaurant->reviewsCount ?? 0,
+                'reviewsSum' => $restaurant->reviewsSum ?? 0,
+                'workingHours' => $restaurant->workingHours ? json_decode($restaurant->workingHours, true) : [],
+                'filters' => $restaurant->filters ? json_decode($restaurant->filters, true) : [],
+                'createdAt' => $restaurant->createdAt ?? '',
+                'vType' => $restaurant->vType ?? 'restaurant',
+                'walletAmount' => $restaurant->walletAmount ?? 0,
+                'adminCommission' => $restaurant->adminCommission ? json_decode($restaurant->adminCommission, true) : null,
+                'DeliveryCharge' => $restaurant->DeliveryCharge ?? false,
+                'specialDiscount' => $restaurant->specialDiscount ? json_decode($restaurant->specialDiscount, true) : [],
+                'specialDiscountEnable' => $restaurant->specialDiscountEnable ?? false,
+                'hidephotos' => $restaurant->hidephotos ?? false,
+                'restaurantCost' => $restaurant->restaurantCost ?? '',
+                'restaurantMenuPhotos' => $restaurant->restaurantMenuPhotos ? json_decode($restaurant->restaurantMenuPhotos, true) : [],
+                'openDineTime' => $restaurant->openDineTime ?? '',
+                'closeDineTime' => $restaurant->closeDineTime ?? '',
+                'dine_in_active' => $restaurant->dine_in_active ?? '',
+                'enabledDiveInFuture' => $restaurant->enabledDiveInFuture ?? false,
+                'subscription_plan' => $restaurant->subscription_plan ? json_decode($restaurant->subscription_plan, true) : null,
+                'subscriptionPlanId' => $restaurant->subscriptionPlanId ?? '',
+                'subscriptionExpiryDate' => $restaurant->subscriptionExpiryDate ?? '',
+                'subscriptionTotalOrders' => $restaurant->subscriptionTotalOrders ?? '',
+                'coordinates' => [
+                    'latitude' => $restaurant->latitude ?? 0,
+                    'longitude' => $restaurant->longitude ?? 0
+                ],
+                'isActive' => $restaurant->isActive ?? true,
+                'opentime' => $restaurant->opentime ?? '',
+                'closetime' => $restaurant->closetime ?? ''
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'data' => $restaurantData
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching restaurant: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching restaurant: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update restaurant data
+     */
+    public function updateRestaurant(Request $request, $id)
+    {
+        try {
+            // Try to find by string ID column first, then by numeric primary key
+            $restaurant = Vendor::where('id', $id)->first();
+            
+            if (!$restaurant && is_numeric($id)) {
+                $restaurant = Vendor::find($id);
+            }
+            
+            if (!$restaurant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found with ID: ' . $id
+                ], 404);
+            }
+            
+            // Helper function to convert boolean values
+            $toBool = function($value) {
+                if (is_bool($value)) return $value ? 1 : 0;
+                if (is_string($value)) {
+                    $value = strtolower($value);
+                    return ($value === 'true' || $value === '1') ? 1 : 0;
+                }
+                return $value ? 1 : 0;
+            };
+            
+            // Helper function to handle JSON encoding
+            $toJson = function($value, $default = []) {
+                if (!isset($value)) return json_encode($default);
+                return is_string($value) ? $value : json_encode($value);
+            };
+            
+            // Update restaurant fields
+            if ($request->has('title')) $restaurant->title = $request->title;
+            if ($request->has('description')) $restaurant->description = $request->description;
+            if ($request->has('location')) $restaurant->location = $request->location;
+            if ($request->has('latitude')) $restaurant->latitude = floatval($request->latitude);
+            if ($request->has('longitude')) $restaurant->longitude = floatval($request->longitude);
+            if ($request->has('photo')) $restaurant->photo = $request->photo;
+            if ($request->has('photos')) $restaurant->photos = $toJson($request->photos, []);
+            if ($request->has('phonenumber')) $restaurant->phonenumber = $request->phonenumber;
+            if ($request->has('zoneId')) $restaurant->zoneId = $request->zoneId;
+            if ($request->has('categoryID')) $restaurant->categoryID = $toJson($request->categoryID, []);
+            if ($request->has('categoryTitle')) $restaurant->categoryTitle = $toJson($request->categoryTitle, []);
+            if ($request->has('cuisineID')) $restaurant->cuisineID = $request->cuisineID;
+            if ($request->has('vendorCuisineID')) $restaurant->vendorCuisineID = $request->vendorCuisineID;
+            
+            // Convert boolean fields properly
+            if ($request->has('reststatus')) $restaurant->reststatus = $toBool($request->reststatus);
+            if ($request->has('isOpen')) $restaurant->isOpen = $toBool($request->isOpen);
+            if ($request->has('specialDiscountEnable')) $restaurant->specialDiscountEnable = $toBool($request->specialDiscountEnable);
+            if ($request->has('enabledDiveInFuture')) $restaurant->enabledDiveInFuture = $toBool($request->enabledDiveInFuture);
+            
+            if ($request->has('workingHours')) $restaurant->workingHours = $toJson($request->workingHours, []);
+            if ($request->has('filters')) $restaurant->filters = $toJson($request->filters, []);
+            if ($request->has('vType')) $restaurant->vType = $request->vType;
+            if ($request->has('adminCommission')) $restaurant->adminCommission = $toJson($request->adminCommission, []);
+            if ($request->has('specialDiscount')) $restaurant->specialDiscount = $toJson($request->specialDiscount, []);
+            if ($request->has('restaurantCost')) $restaurant->restaurantCost = $request->restaurantCost;
+            if ($request->has('restaurantMenuPhotos')) $restaurant->restaurantMenuPhotos = $toJson($request->restaurantMenuPhotos, []);
+            if ($request->has('openDineTime')) $restaurant->openDineTime = $request->openDineTime;
+            if ($request->has('closeDineTime')) $restaurant->closeDineTime = $request->closeDineTime;
+            
+            $restaurant->save();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Restaurant updated successfully'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error updating restaurant: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating restaurant: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Toggle restaurant status
+     */
+    public function toggleRestaurantStatus($id)
+    {
+        try {
+            // Try to find by string ID column first, then by numeric primary key
+            $restaurant = Vendor::where('id', $id)->first();
+            
+            if (!$restaurant && is_numeric($id)) {
+                $restaurant = Vendor::find($id);
+            }
+            
+            if (!$restaurant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found with ID: ' . $id
+                ], 404);
+            }
+            
+            $restaurant->reststatus = $restaurant->reststatus == 1 ? 0 : 1;
+            $restaurant->save();
+            
+            return response()->json([
+                'success' => true,
+                'reststatus' => $restaurant->reststatus == 1
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error toggling restaurant status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error toggling restaurant status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Toggle restaurant open/close status
+     */
+    public function toggleRestaurantOpenStatus($id)
+    {
+        try {
+            // Try to find by string ID column first, then by numeric primary key
+            $restaurant = Vendor::where('id', $id)->first();
+            
+            if (!$restaurant && is_numeric($id)) {
+                $restaurant = Vendor::find($id);
+            }
+            
+            if (!$restaurant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found with ID: ' . $id
+                ], 404);
+            }
+            
+            $restaurant->isOpen = $restaurant->isOpen == 1 ? 0 : 1;
+            $restaurant->save();
+            
+            return response()->json([
+                'success' => true,
+                'isOpen' => $restaurant->isOpen == 1
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error toggling restaurant open status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error toggling restaurant open status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete restaurant
+     */
+    public function deleteRestaurant($id)
+    {
+        try {
+            // Try to find by string ID column first, then by numeric primary key
+            $restaurant = Vendor::where('id', $id)->first();
+            
+            if (!$restaurant && is_numeric($id)) {
+                $restaurant = Vendor::find($id);
+            }
+            
+            if (!$restaurant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found with ID: ' . $id
+                ], 404);
+            }
+            
+            $restaurant->delete();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Restaurant deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting restaurant: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting restaurant: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get categories for restaurant
+     */
+    public function getCategories()
+    {
+        try {
+            $categories = DB::table('vendor_categories')
+                          ->orderBy('title', 'asc')
+                          ->select('id', 'title', 'photo')
+                          ->get();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $categories
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching categories: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get cuisines for restaurant
+     */
+    public function getCuisines()
+    {
+        try {
+            $cuisines = DB::table('vendor_cuisines')
+                        ->orderBy('title', 'asc')
+                        ->select('id', 'title', 'photo')
+                        ->get();
+            
+            return response()->json([
+                'success' => true,
+                'data' => $cuisines
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching cuisines: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Debug: Check if vendor exists with given ID
+     */
+    public function debugVendor($id)
+    {
+        try {
+            // Check all possible matches
+            $byFirebaseId = AppUser::where('firebase_id', $id)->where('role', 'vendor')->first();
+            $byUnderscoreId = AppUser::where('_id', $id)->where('role', 'vendor')->first();
+            $byNumericId = is_numeric($id) ? AppUser::where('id', $id)->where('role', 'vendor')->first() : null;
+            
+            // Get sample vendors
+            $sampleVendors = AppUser::where('role', 'vendor')->limit(5)->get(['id', 'firebase_id', '_id', 'firstName', 'lastName', 'email']);
+            
+            return response()->json([
+                'search_id' => $id,
+                'found_by_firebase_id' => $byFirebaseId ? true : false,
+                'found_by_underscore_id' => $byUnderscoreId ? true : false,
+                'found_by_numeric_id' => $byNumericId ? true : false,
+                'vendor_firebase_id' => $byFirebaseId ? [
+                    'firebase_id' => $byFirebaseId->firebase_id,
+                    '_id' => $byFirebaseId->_id,
+                    'name' => $byFirebaseId->firstName . ' ' . $byFirebaseId->lastName
+                ] : null,
+                'vendor_underscore_id' => $byUnderscoreId ? [
+                    'firebase_id' => $byUnderscoreId->firebase_id,
+                    '_id' => $byUnderscoreId->_id,
+                    'name' => $byUnderscoreId->firstName . ' ' . $byUnderscoreId->lastName
+                ] : null,
+                'sample_vendors' => $sampleVendors
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get restaurant statistics for view page
+     */
+    public function getRestaurantStats($id)
+    {
+        try {
+            // Get total orders
+            $totalOrders = DB::table('restaurant_orders')
+                ->where('vendorID', $id)
+                ->count();
+
+            // Get total earnings (from completed orders)
+            $completedOrders = DB::table('restaurant_orders')
+                ->where('vendorID', $id)
+                ->where('status', 'Order Completed')
+                ->get();
+
+            $totalEarnings = 0;
+            foreach ($completedOrders as $order) {
+                $discount = $order->discount ?? 0;
+                $deliveryCharge = $order->deliveryCharge ?? 0;
+                $tip = $order->tip ?? 0;
+                $taxAmount = $order->tax ?? 0;
+                
+                $orderTotal = ($discount + $deliveryCharge + $tip + $taxAmount);
+                $totalEarnings += $orderTotal;
+            }
+
+            // Get total payments (from payouts)
+            $totalPayments = DB::table('payouts')
+                ->where('vendorID', $id)
+                ->where('paidDate', '!=', null)
+                ->sum('amount');
+
+            // Get remaining balance
+            $remainingBalance = $totalEarnings - $totalPayments;
+
+            return response()->json([
+                'success' => true,
+                'totalOrders' => $totalOrders,
+                'totalEarnings' => $totalEarnings,
+                'totalPayments' => $totalPayments,
+                'remainingBalance' => $remainingBalance
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching restaurant stats: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching restaurant stats: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get user by ID for restaurant view
+     */
+    public function getUserById($id)
+    {
+        try {
+            $user = DB::table('users')
+                ->where('id', $id)
+                ->orWhere('firebase_id', $id)
+                ->orWhere('_id', $id)
+                ->first();
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'user' => $user
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching user: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching user: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Add wallet amount
+     */
+    public function addWalletAmount(Request $request)
+    {
+        try {
+            $userId = $request->user_id;
+            $amount = floatval($request->amount);
+            $note = $request->note ?? '';
+
+            // Get user
+            $user = DB::table('users')
+                ->where('id', $userId)
+                ->orWhere('firebase_id', $userId)
+                ->orWhere('_id', $userId)
+                ->first();
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            // Calculate new wallet amount
+            $currentWalletAmount = floatval($user->wallet_amount ?? 0);
+            $newWalletAmount = $currentWalletAmount + $amount;
+
+            // Update user wallet
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update(['wallet_amount' => $newWalletAmount]);
+
+            // Create wallet transaction
+            $walletId = 'wallet_' . time() . '_' . uniqid();
+            DB::table('wallet')->insert([
+                'id' => $walletId,
+                'user_id' => $user->id,
+                'amount' => $amount,
+                'date' => now(),
+                'isTopUp' => 1,
+                'order_id' => '',
+                'payment_method' => 'Wallet',
+                'payment_status' => 'success',
+                'note' => $note,
+                'transactionUser' => 'vendor',
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Wallet amount added successfully',
+                'newWalletAmount' => $newWalletAmount,
+                'transaction_id' => $walletId,
+                'user' => [
+                    'firstName' => $user->firstName,
+                    'lastName' => $user->lastName,
+                    'email' => $user->email
+                ]
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error adding wallet amount: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error adding wallet amount: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get wallet balance
+     */
+    public function getWalletBalance($userId)
+    {
+        try {
+            $user = DB::table('users')
+                ->where('id', $userId)
+                ->orWhere('firebase_id', $userId)
+                ->orWhere('_id', $userId)
+                ->first();
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            $walletBalance = floatval($user->wallet_amount ?? 0);
+
+            return response()->json([
+                'success' => true,
+                'wallet_balance' => $walletBalance
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching wallet balance: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching wallet balance: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get subscription history for user
+     */
+    public function getSubscriptionHistory($userId)
+    {
+        try {
+            $history = DB::table('subscription_history')
+                ->where('user_id', $userId)
+                ->orderBy('createdAt', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'history' => $history
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching subscription history: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching subscription history: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get email template by type
+     */
+    public function getEmailTemplate($type)
+    {
+        try {
+            $template = DB::table('email_templates')
+                ->where('type', $type)
+                ->first();
+
+            if (!$template) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Email template not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'template' => $template
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching email template: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching email template: ' . $e->getMessage()
+            ], 500);
         }
     }
 }
