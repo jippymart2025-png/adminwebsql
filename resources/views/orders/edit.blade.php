@@ -412,40 +412,63 @@
     <script>
         // MySQL-based - Order data passed from controller
         var id = "<?php echo $id; ?>";
-        
+
         // Order data from PHP
         var orderData = @json($order);
         var currency = @json($currency ?? (object)[]);
         var availableDrivers = @json($availableDrivers ?? []);
-        
+
         // Currency settings
         var currentCurrency = currency?.symbol || '₹';
         var currencyAtRight = currency?.symbolAtRight || false;
         var decimal_degits = currency?.decimal_degits || 2;
-        
+
         // Order variables
         var driverId = orderData.driverID || '';
         var old_order_status = orderData.status || '';
         var orderPreviousStatus = orderData.status || '';
-        var orderTakeAwayOption = (orderData.takeAway == '1' || orderData.takeAway == 'true' || orderData.takeAway === true);
+        var orderTakeAwayOption = (orderData.takeAway === '1' || orderData.takeAway === 'true' || orderData.takeAway === true);
         var deliveryChargeVal = parseFloat(orderData.deliveryCharge || 0);
         var deliveryCharge = parseFloat(orderData.deliveryCharge || 0);
         var tip_amount = parseFloat(orderData.tip_amount || 0);
         var orderCustomerId = orderData.authorID || '';
         var orderPaytableAmount = parseFloat(orderData.toPayAmount || 0);
         var payment_shared = orderData.payment_shared || false;
-        
+
         // Driver and vendor info
         var currentDriverId = driverId;
         var customername = (orderData.user_first_name || '') + ' ' + (orderData.user_last_name || '');
         var vendorname = orderData.vendor_title || '';
-        
+
         // Helper variables
         var append_procucts_list = '';
         var append_procucts_total = '';
         var total_price = 0;
         var place_image = '{{ asset("images/placeholder.png") }}';
-        
+
+        // Provide no-op stubs when Firebase is not available (MySQL build)
+        if (typeof window.database === 'undefined') {
+            window.database = {
+                collection: function() {
+                    return {
+                        doc: function() {
+                            return {
+                                id: 'tmp',
+                                set: async function() {},
+                                update: async function() {},
+                                get: async function() { return { docs: [], exists: false, data: function(){ return {}; } }; }
+                            };
+                        },
+                        where: function() { return { get: async function(){ return { docs: [] }; } }; },
+                        get: async function(){ return { docs: [] }; }
+                    };
+                }
+            };
+        }
+        if (typeof window.firebase === 'undefined') {
+            window.firebase = { firestore: { FieldValue: { serverTimestamp: function(){ return new Date(); } }, Timestamp: { now: function(){ return { toDate: function(){ return new Date(); } }; } } } };
+        }
+
         // Load available drivers for manual assignment (from PHP)
         function loadAvailableDrivers() {
                     $('#driver_selector').empty();
@@ -544,7 +567,7 @@
                 });
             }
 
-        $(document).ready(function () {
+        $(document).ready(async function () {
             // Initialize driver assignment
             initializeDriverAssignment();
 
@@ -564,17 +587,19 @@
                 var url = $(this).attr('data-url');
                 window.location.href = url;
             });
-            
+
             // MySQL-based: Populate order data from PHP
-            var order = orderData;
-            var vendorOrder = orderData; // For compatibility
-            
+            var order = orderData || {};
+            var vendorOrder = order; // For compatibility
+            var vendorIDSafe = order.vendorID || order.vendor_db_id || order.vendor_id || '';
+            var productsSafe = Array.isArray(order.products) ? order.products : [];
+
             // Populate order details
                 append_procucts_list = document.getElementById('order_products');
                 append_procucts_list.innerHTML = '';
                 append_procucts_total = document.getElementById('order_products_total');
                 append_procucts_total.innerHTML = '';
-            
+
             // Billing name
             if (order.address && order.address.name) {
                     $("#billing_name").text(order.address.name);
@@ -585,9 +610,9 @@
                 }
                 $("#billing_name").text(billingName.trim() || 'N/A');
             }
-            
+
                 $("#trackng_number").text(id);
-            
+
             // Billing address
                 var billingAddressstring = '';
             if (order.address && order.address.address) {
@@ -600,33 +625,50 @@
                     billingAddressstring = billingAddressstring + " " + order.address.landmark;
                 }
                 $("#billing_line2").text(billingAddressstring);
-            
+
             // Billing phone and email
             var userPhone = order.user_phone || (order.author && order.author.phoneNumber) || '';
             $("#billing_phone").text(userPhone ? shortEditNumber(userPhone) : "");
-            
+
             var userEmail = order.user_email || (order.author && order.author.email) || '';
             if (userEmail) {
                 $("#billing_email").html('<a href="mailto:' + userEmail + '">' + shortEmail(userEmail) + '</a>');
                 } else {
                     $("#billing_email").html("");
                 }
-            
-            // Created date
-                if (order.createdAt) {
-                try {
-                    // Parse ISO string format
-                    var date = new Date(order.createdAt);
-                    var dd = String(date.getDate()).padStart(2, '0');
-                    var mm = String(date.getMonth() + 1).padStart(2, '0');
-                    var yyyy = date.getFullYear();
-                    var createdAt_val = yyyy + '-' + mm + '-' + dd;
-                    var time = date.toLocaleTimeString('en-US');
-                    $('#createdAt').text(createdAt_val + ' ' + time);
-                } catch(e) {
-                    $('#createdAt').text(order.createdAt);
+
+            // Created date - robust parsing for MySQL (YYYY-MM-DD HH:mm:ss), ISO, or timestamp
+            function formatDateTime(value){
+                try{
+                    if(!value){ return ''; }
+                    // If object with seconds (legacy Firestore)
+                    if(typeof value === 'object' && value.seconds){
+                        var d1 = new Date(value.seconds*1000);
+                        return d1.toLocaleDateString('en-GB')+' '+d1.toLocaleTimeString('en-US');
+                    }
+                    // If numeric timestamp
+                    if(!isNaN(value) && value.toString().length>=10){
+                        var d2 = new Date(parseInt(value));
+                        if(!isNaN(d2.getTime())) return d2.toLocaleDateString('en-GB')+' '+d2.toLocaleTimeString('en-US');
+                    }
+                    // If MySQL datetime string "YYYY-MM-DD HH:mm:ss"
+                    if(typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/)){
+                        // Replace space with 'T' to help Date parse consistently
+                        var norm = value.replace(' ', 'T');
+                        var d3 = new Date(norm);
+                        if(!isNaN(d3.getTime())) return d3.toLocaleDateString('en-GB')+' '+d3.toLocaleTimeString('en-US');
+                    }
+                    // ISO or other parseable strings
+                    var d4 = new Date(value);
+                    if(!isNaN(d4.getTime())) return d4.toLocaleDateString('en-GB')+' '+d4.toLocaleTimeString('en-US');
+                    return value;
+                }catch(err){
+                    return value;
                 }
-                }
+            }
+            if(order.createdAt){
+                $('#createdAt').text(formatDateTime(order.createdAt));
+            }
                 var payment_method = '';
                 if (order.payment_method) {
                     if (order.payment_method == "stripe") {
@@ -716,21 +758,9 @@
                     $('#driver_firstName').text(order.driver.firstName);
                     $('#driver_lastName').text(order.driver.lastName);
                     $('#driver_phone').text(shortEditNumber(order.driver.phoneNumber));
-                    var zoneId = '';
-                    if (order.driver.hasOwnProperty('zoneId') && order.driver.zoneId.length > 0) {
-                        zoneId = order.driver.zoneId;
-                    } else if (order.hasOwnProperty('driverID')) {
-                        var driverSnapshot = await database.collection('users').doc(order.driverID)
-                            .get();
-                        var driverData = driverSnapshot.data();
-                        zoneId = driverData.zoneId;
-                    }
-                    if (zoneId != '') {
-                        database.collection('zone').doc(zoneId).get().then(async function (snapshots) {
-                            let zone = snapshots.data();
-                            $("#zone_name").text(zone.name);
-                        });
-                    }
+                    // MySQL-based: use zone name joined in controller
+                    var zoneName = order.zone_name || (order.driver && order.driver.zone) || '';
+                    $("#zone_name").text(zoneName);
 
                     // Hide manual assignment section when driver is already assigned
                     $('#manual_driver_assignment_section').hide();
@@ -780,7 +810,7 @@
 
                 // --- MySQL-based: Build products list and totals (fallback if promotional builder not used) ---
                 try {
-                    var products = Array.isArray(order.products) ? order.products : [];
+                    var products = productsSafe;
                     var html = '';
                     var total_price_local = 0;
                     products.forEach(function (product) {
@@ -815,20 +845,11 @@
                     vendorAuthor = order.vendor.author;
                 }
                 var scheduleTime = '';
-                if (order.hasOwnProperty('scheduleTime') && order.scheduleTime != null && order
-                    .scheduleTime != '') {
+                if (order.hasOwnProperty('scheduleTime') && order.scheduleTime != null && order.scheduleTime != '') {
                     scheduleTime = order.scheduleTime;
-                    var scheduleDate = scheduleTime.toDate().toDateString();
-                    var time = order.scheduleTime.toDate().toLocaleTimeString('en-US');
-                    var scheduleDate = new Date(scheduleDate);
-                    var dd = String(scheduleDate.getDate()).padStart(2, '0');
-                    var mm = String(scheduleDate.getMonth() + 1).padStart(2, '0'); //January is 0!
-                    var yyyy = scheduleDate.getFullYear();
-                    var scheduleDate = yyyy + '-' + mm + '-' + dd;
-                    var scheduleDateTime = scheduleDate + ' ' + time;
+                    var scheduleDateTime = typeof formatDateTime === 'function' ? formatDateTime(scheduleTime) : scheduleTime;
                     $('.schedule_date').append(
-                        '<label class="col-12 control-label"><strong>{{ trans('lang.schedule_date_time') }}:</strong><span id=""> ' +
-                        scheduleDateTime + '</span></label>')
+                        '<label class="col-12 control-label"><strong>{{ trans('lang.schedule_date_time') }}:</strong><span id=""> ' + scheduleDateTime + '</span></label>');
                 }
                 if (order.hasOwnProperty('estimatedTimeToPrepare') && order.estimatedTimeToPrepare !=
                     null && order.estimatedTimeToPrepare != '') {
@@ -872,7 +893,7 @@
 
                 let promotionalTotals = null;
                 try {
-                    promotionalTotals = await calculatePromotionalTotals(order.products, order.vendorID);
+                    promotionalTotals = await calculatePromotionalTotals(productsSafe, vendorIDSafe);
                     console.log('💰 Promotional totals calculated:', promotionalTotals);
                 } catch (error) {
                     console.error('❌ Error calculating promotional totals:', error);
@@ -902,8 +923,8 @@
                 // Build product list with promotional pricing
                 console.log('🎯 ===== BUILDING PRODUCT LIST WITH PROMOTIONS =====');
                 console.log('🎯 Testing promotional pricing for first product...');
-                if (order.products && order.products.length > 0) {
-                    const testProduct = order.products[0];
+                if (productsSafe && productsSafe.length > 0) {
+                    const testProduct = productsSafe[0];
                     console.log('🎯 TEST PRODUCT DETAILS:', {
                         id: testProduct.id,
                         name: testProduct.name,
@@ -927,24 +948,26 @@
                 console.log('🎯 About to call buildHTMLProductsListWithPromotions...');
                 var productsListHTML = '';
                 try {
-                    productsListHTML = await buildHTMLProductsListWithPromotions(order.products, order.vendorID);
+                    productsListHTML = await buildHTMLProductsListWithPromotions(productsSafe, vendorIDSafe);
                     console.log('🎯 buildHTMLProductsListWithPromotions completed successfully');
                 } catch (error) {
                     console.error('❌ buildHTMLProductsListWithPromotions failed:', error);
                     console.log('🔄 Falling back to original buildHTMLProductsList');
-                    productsListHTML = buildHTMLProductsList(order.products);
+                    productsListHTML = buildHTMLProductsList(order.products || []);
                 }
 
-                var productstotalHTML = await buildHTMLProductstotal(order);
+                // Build totals with hard fallback
+                var productstotalHTML = '';
+                try {
+                    productstotalHTML = await buildHTMLProductstotal(order);
+                } catch (e) {
+                    console.error('❌ buildHTMLProductstotal failed, using fallback:', e);
+                    productstotalHTML = simpleBuildTotals(order);
+                }
 
-                if (productsListHTML != '') {
-                    append_procucts_list.innerHTML = productsListHTML;
-                    console.log('🎯 Product list HTML set with promotional pricing');
-                }
-                if (productstotalHTML != '') {
-                    append_procucts_total.innerHTML = productstotalHTML;
-                    console.log('💰 Product total HTML set with promotional pricing');
-                }
+                append_procucts_list.innerHTML = productsListHTML || '';
+                append_procucts_total.innerHTML = (productstotalHTML && productstotalHTML.trim().length>0) ? productstotalHTML : simpleBuildTotals(order);
+                console.log('✅ Totals rendered');
                 orderPreviousStatus = order.status;
                 if (order.hasOwnProperty('payment_method')) {
                     orderPaymentMethod = order.payment_method;
@@ -957,53 +980,8 @@
                 if (order.authorID) {
                     orderCustomerId = order.authorID;
                 }
-                if (order.vendorID) {
-                    var vendor = database.collection('vendors').where("id", "==", order.vendorID);
-                    vendor.get().then(async function (snapshotsnew) {
-                        if (snapshotsnew.docs.length > 0) {
-                            var vendordata = snapshotsnew.docs[0].data();
-                            if (subscriptionModel) {
-                                if (vendordata.hasOwnProperty('subscriptionTotalOrders') && vendordata.subscriptionTotalOrders != null && vendordata.subscriptionTotalOrders != '') {
-                                    subscriptionTotalOrders = vendordata.subscriptionTotalOrders;
-                                }
-                            }
-
-                            if (vendordata.id) {
-                                // Determine correct view route based on vendor type
-                                var route_view;
-                                if (vendordata.hasOwnProperty('vType') && vendordata.vType === 'mart') {
-                                    route_view = '{{ route('marts.view', ':id') }}';
-                                } else {
-                                    route_view = '{{ route('restaurants.view', ':id') }}';
-                                }
-                                route_view = route_view.replace(':id', vendordata.id);
-                                $('#resturant-view').attr('data-url', route_view);
-                            }
-                            if (vendordata.photo != "" && vendordata.photo != null) {
-                                $('.resturant-img').attr('src', vendordata.photo);
-                            } else {
-                                $('.resturant-img').attr('src', place_image);
-                            }
-                            if (vendordata.title != "" && vendordata.title != null) {
-                                $('.vendor-title').html(vendordata.title);
-                            }
-                            if (vendordata.phonenumber != "" && vendordata.phonenumber !=
-                                null) {
-                                $('#vendor_phone').text(shortEditNumber(vendordata
-                                    .phonenumber));
-                            } else {
-                                $('#vendor_phone').text("");
-                            }
-                            if (vendordata.location != "" && vendordata.location != null) {
-                                $('#vendor_address').text(vendordata.location);
-                            }
-                        } else {
-                            $('.resturant-img').attr('src', place_image);
-                            $('.vendor-title').html("{{ trans('lang.unknown') }}");
-                        }
-                    });
-                    tip_amount = order.tip_amount;
-                }
+                // Firebase vendor fetch removed; vendor details already filled from MySQL above
+                tip_amount = order.tip_amount;
                 jQuery("#data-table_processing").hide();
             })
 
@@ -1017,100 +995,13 @@
             }
 
             $('#add-prepare-time-btn').click(function () {
-                if (parseInt(subscriptionTotalOrders) == 0) {
-                    alert('{{ trans("lang.can_not_accept_more_orders") }}');
+                var preparationTime = $('#prepare_time').val();
+                if (preparationTime == '') {
+                    $('#add_prepare_time_error').text('{{ trans('lang.add_prepare_time_error') }}');
                     return false;
-                } else {
-
-
-                    var preparationTime = $('#prepare_time').val();
-                    if (preparationTime == '') {
-                        $('#add_prepare_time_error').text('{{ trans('lang.add_prepare_time_error') }}');
-                        return false;
-                    }
-                    var date = firebase.firestore.FieldValue.serverTimestamp();
-                    database.collection('restaurant_orders').doc(id).update({
-                        'status': "restaurantorders Accepted",
-                        'estimatedTimeToPrepare': preparationTime
-                    }).then(async function (result) {
-                        console.log('✅ restaurantorders accepted successfully, now logging activity...');
-                        try {
-                            if (typeof logActivity === 'function') {
-                                console.log('🔍 Calling logActivity for order acceptance...');
-                                await logActivity('orders', 'accepted', 'Accepted order #' + id + ' with preparation time: ' + preparationTime + ' minutes');
-                                console.log('✅ Activity logging completed successfully');
-                            } else {
-                                console.error('❌ logActivity function is not available');
-                            }
-                        } catch (error) {
-                            console.error('❌ Error calling logActivity:', error);
-                        }
-
-                        var wId = database.collection('temp').doc().id;
-                        database.collection('wallet').doc(wId).set({
-                            'amount': parseFloat(basePrice),
-                            'date': date,
-                            'id': wId,
-                            'isTopUp': true,
-                            'order_id': "<?php echo $id; ?>",
-                            'payment_method': 'Wallet',
-                            'payment_status': 'success',
-                            'transactionUser': 'vendor',
-                            'note': 'restaurantorders Amount credited',
-                            'user_id': vendorAuthor
-                        }).then(async function (result) {
-                            var vendorAmount = basePrice;
-                            if (total_tax_amount != 0 || total_tax_amount != '') {
-                                var wId = database.collection('temp').doc().id;
-                                database.collection('wallet').doc(wId).set({
-                                    'amount': parseFloat(total_tax_amount),
-                                    'date': date,
-                                    'id': wId,
-                                    'isTopUp': true,
-                                    'order_id': "<?php echo $id; ?>",
-                                    'payment_method': 'tax',
-                                    'payment_status': 'success',
-                                    'transactionUser': 'vendor',
-                                    'user_id': vendorAuthor,
-                                    'note': 'restaurantorders Tax credited'
-                                }).then(async function (result) {
-                                })
-                            }
-                            database.collection('users').where('id', '==', vendorAuthor)
-                                .get().then(async function (snapshotsnew) {
-                                var vendordata = snapshotsnew.docs[0]
-                                    .data();
-                                if (vendordata) {
-
-                                    if (parseInt(subscriptionTotalOrders) != -1) {
-                                        subscriptionTotalOrders = parseInt(subscriptionTotalOrders) - 1;
-                                        await database.collection('vendors').doc(vendordata.vendorID).update({'subscriptionTotalOrders': subscriptionTotalOrders.toString()})
-                                    }
-
-
-                                    if (isNaN(vendordata.wallet_amount) ||
-                                        vendordata.wallet_amount ==
-                                        undefined) {
-                                        vendorWallet = 0;
-                                    } else {
-                                        vendorWallet = parseFloat(vendordata
-                                            .wallet_amount);
-                                    }
-                                    newVendorWallet = vendorWallet + vendorAmount + parseFloat(total_tax_amount);
-                                    database.collection('users').doc(
-                                        vendorAuthor).update({
-                                        'wallet_amount': parseFloat(
-                                            newVendorWallet)
-                                    }).then(async function (result) {
-                                        callAjax();
-                                    })
-                                } else {
-                                    callAjax();
-                                }
-                            });
-                        });
-                    });
                 }
+                alert('Preparation time update is not available in this build.');
+                $('#addPreparationTimeModal').modal('hide');
             });
 
             async function callAjax() {
@@ -1134,7 +1025,7 @@
             $(".edit-form-btn").click(function () {
                 var clientName = $(".client_name").val();
                 var orderStatus = $("#order_status").val();
-                
+
                 if (old_order_status != orderStatus) {
                     // Update order status via Laravel route
                     $.ajax({
@@ -1168,8 +1059,10 @@
                         window.location.href = '{{ route('orders') }}';
                     <?php } ?>
                 }
-                
-                // Legacy code below - keeping for reference but will be removed
+                // Close click handler cleanly
+            });
+
+            // Legacy code below - removed for MySQL build (Firebase logic)
                 /*
                 if (old_order_status != orderStatus) {
                     if (orderStatus == "restaurantorders Placed") {
@@ -1181,7 +1074,7 @@
                     }
                     if (orderStatus == "restaurantorders Accepted") {
                         // This section removed - handled by Laravel route
-                */
+
                             var scheduleTime = '';
                             if (order.hasOwnProperty('scheduleTime') && order
                                 .scheduleTime != null) {
@@ -1464,8 +1357,7 @@
                         });
                     }
                 }
-            })
-        })
+            */
 
         // Initialize promotional pricing interceptor to catch any order loading
         function initializePromotionalPricingInterceptor() {
@@ -1657,161 +1549,16 @@
 
         // Clean and robust promotional price checking function with proper hierarchy
         async function getPromotionalPrice(product, vendorID) {
-            try {
-                console.log('🔍 ===== PROMOTIONAL PRICE CHECK START =====');
-                console.log('🔍 Product Details:', {
-                    id: product.id,
-                    name: product.name,
-                    price: product.price,
-                    discountPrice: product.discountPrice,
-                    vendorID: vendorID
-                });
-
-                // HIERARCHY: 1. Promo price, 2. discountPrice (>0), 3. price
-                console.log('🔍 ===== CHECKING PRICE HIERARCHY =====');
-
-                // Step 1: Check for active promotional prices
-                console.log('🔍 Step 1: Checking for promotional prices...');
-                const promotionQuery = database.collection('promotions')
-                    .where('product_id', '==', product.id)
-                    .where('restaurant_id', '==', vendorID)
-                    .where('isAvailable', '==', true);
-
-                console.log('🔍 Executing promotion query...');
-                const promotionSnapshot = await promotionQuery.get();
-                console.log('🔍 Promotion query results:', {
-                    empty: promotionSnapshot.empty,
-                    size: promotionSnapshot.size,
-                    docs: promotionSnapshot.docs.length
-                });
-
-                if (!promotionSnapshot.empty) {
-                    console.log('🔍 Found', promotionSnapshot.docs.length, 'promotions, checking time validity...');
-
-                    const now = firebase.firestore.Timestamp.now();
-                    console.log('🔍 Current time:', now.toDate());
-
-                    // Check each promotion for time validity
-                    for (const doc of promotionSnapshot.docs) {
-                        const promotionData = doc.data();
-                        console.log('🔍 Checking promotion:', {
-                            id: doc.id,
-                            product_id: promotionData.product_id,
-                            restaurant_id: promotionData.restaurant_id,
-                            special_price: promotionData.special_price,
-                            start_time: promotionData.start_time,
-                            end_time: promotionData.end_time,
-                            isAvailable: promotionData.isAvailable
-                        });
-
-                        const startTime = promotionData.start_time;
-                        const endTime = promotionData.end_time;
-
-                        console.log('🔍 Time comparison:', {
-                            now: now.toDate(),
-                            start_time: startTime ? startTime.toDate() : 'null',
-                            end_time: endTime ? endTime.toDate() : 'null',
-                            isAfterStart: startTime ? now >= startTime : true,
-                            isBeforeEnd: endTime ? now <= endTime : true
-                        });
-
-                        // Check if promotion is currently active
-                        const isAfterStart = !startTime || now >= startTime;
-                        const isBeforeEnd = !endTime || now <= endTime;
-                        const isActive = isAfterStart && isBeforeEnd;
-
-                        console.log('🔍 Promotion is active:', isActive);
-                        console.log('🔍 Is after start:', isAfterStart);
-                        console.log('🔍 Is before end:', isBeforeEnd);
-
-                        if (isActive) {
-                            console.log('🎯 ===== PROMOTIONAL PRICE FOUND (HIERARCHY 1) =====');
-                            console.log('🎯 Product:', product.name);
-
-                            // For promotional price, we need to determine the original price for comparison
-                            // Use hierarchy: discountPrice (>0) or price
-                            const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0)
-                                ? parseFloat(product.discountPrice)
-                                : parseFloat(product.price);
-
-                            console.log('🎯 Original Price (for comparison):', originalPrice);
-                            console.log('🎯 Special Price:', promotionData.special_price);
-                            console.log('🎯 Promotion Data:', promotionData);
-                            console.log('🎯 Price Difference:', (originalPrice - parseFloat(promotionData.special_price)));
-
-                            const result = {
-                                price: parseFloat(promotionData.special_price),
-                                isPromotional: true,
-                                promotionId: doc.id,
-                                originalPrice: originalPrice
-                            };
-                            console.log('🎯 Returning promotional result:', result);
-                            return result;
-                        }
-                    }
-
-                    console.log('ℹ️ No active promotions found (time-based filtering)');
-                } else {
-                    console.log('ℹ️ No promotions found for this product');
-                }
-
-                // Step 2: Check discountPrice (if > 0)
-                console.log('🔍 Step 2: Checking discountPrice...');
-                if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
-                    console.log('🎯 ===== DISCOUNT PRICE FOUND (HIERARCHY 2) =====');
-                    console.log('🎯 Product:', product.name);
-                    console.log('🎯 Using discountPrice:', product.discountPrice);
-
-                    const result = {
-                        price: parseFloat(product.discountPrice),
-                        isPromotional: false,
-                        promotionId: null,
-                        originalPrice: parseFloat(product.discountPrice)
-                    };
-                    console.log('🎯 Returning discount price result:', result);
-                    return result;
-                }
-
-                // Step 3: Use regular price (fallback)
-                console.log('🔍 Step 3: Using regular price (fallback)...');
-                console.log('ℹ️ ===== USING REGULAR PRICE (HIERARCHY 3) =====');
-                console.log('ℹ️ Product:', product.name);
-                console.log('ℹ️ Using regular price:', product.price);
-
-                const regularResult = {
-                    price: parseFloat(product.price),
-                    isPromotional: false,
-                    promotionId: null,
-                    originalPrice: parseFloat(product.price)
-                };
-                console.log('ℹ️ Returning regular result:', regularResult);
-                return regularResult;
-
-            } catch (error) {
-                console.error('❌ ===== ERROR IN PROMOTIONAL PRICE CHECK =====');
-                console.error('❌ Error details:', error);
-                console.error('❌ Product:', product.name, 'ID:', product.id);
-                console.error('❌ Vendor:', vendorID);
-
-                // Error fallback: Use hierarchy
-                let errorPrice;
-                if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
-                    errorPrice = parseFloat(product.discountPrice);
-                    console.error('❌ Error fallback: Using discountPrice');
-                } else {
-                    errorPrice = parseFloat(product.price);
-                    console.error('❌ Error fallback: Using regular price');
-                }
-
-                const errorResult = {
-                    price: errorPrice,
-                    isPromotional: false,
-                    promotionId: null,
-                    originalPrice: errorPrice
-                };
-                console.error('❌ Returning error fallback:', errorResult);
-                return errorResult;
-            }
+            // MySQL version: no Firebase calls. Use discountPrice (>0) else price
+            var price = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+                ? parseFloat(product.discountPrice)
+                : parseFloat(product.price);
+            return {
+                price: price,
+                isPromotional: false,
+                promotionId: null,
+                originalPrice: price
+            };
         }
 
         // Function to enhance product list with promotional pricing
@@ -1926,6 +1673,7 @@
         async function buildHTMLProductsListWithPromotions(snapshotsProducts, vendorID) {
             try {
                 console.log('🎯 ===== BUILDING PRODUCT LIST WITH PROMOTIONS =====');
+                snapshotsProducts = Array.isArray(snapshotsProducts) ? snapshotsProducts : [];
                 console.log('🎯 Products:', snapshotsProducts.length);
                 console.log('🎯 Vendor ID:', vendorID);
 
@@ -2211,35 +1959,18 @@
         }
 
         function getProductInfo(product) {
-            database.collection('vendor_products').doc(product.id).get().then(async function (snapshots) {
-                if (snapshots.exists) {
-                    var productData = snapshots.data();
-                    if (product.variant_info && product.variant_info.variant_id) {
-                        var variant_info = $.map(productData.item_attribute.variants, function (v, i) {
-                            if (v.variant_sku == product.variant_info.variant_sku) {
-                                return v;
-                            }
-                        });
-                        base_price = parseFloat(variant_info[0].variant_price);
-                        var product_id = product.variant_info.variant_id;
-                    } else {
-                        if (parseFloat(productData.disPrice) != 0) {
-                            var base_price = productData.disPrice;
-                        } else {
-                            var base_price = productData.price;
-                        }
-                        var product_id = product.id;
-                    }
-                    if (currencyAtRight) {
-                        base_price_format = parseFloat(base_price).toFixed(decimal_degits) + "" +
-                            currentCurrency;
-                    } else {
-                        base_price_format = currentCurrency + "" + parseFloat(base_price).toFixed(
-                            decimal_degits);
-                    }
-                    $(".base-price-" + product_id).text('(Base Price: ' + base_price_format + ')');
-                }
-            });
+            // MySQL version: use product's own price info
+            var base_price = 0;
+            var product_id = (product.variant_info && product.variant_info.variant_id) ? product.variant_info.variant_id : product.id;
+            if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
+                base_price = parseFloat(product.discountPrice);
+            } else if (product.price) {
+                base_price = parseFloat(product.price);
+            }
+            var base_price_format = currencyAtRight
+                ? (parseFloat(base_price).toFixed(decimal_degits) + currentCurrency)
+                : (currentCurrency + parseFloat(base_price).toFixed(decimal_degits));
+            $(".base-price-" + product_id).text('(Base Price: ' + base_price_format + ')');
         }
 
         // Function to enhance total calculation with promotional savings
@@ -2360,6 +2091,7 @@
         // Enhanced function to calculate totals with promotional pricing
         async function calculatePromotionalTotals(products, vendorID) {
             console.log('💰 ===== CALCULATING PROMOTIONAL TOTALS =====');
+            products = Array.isArray(products) ? products : [];
             console.log('💰 Products:', products.length);
             console.log('💰 Vendor ID:', vendorID);
 
@@ -2795,16 +2527,74 @@
             });
         }
 
-        //Review code GA
-        var refReviewAttributes = database.collection('review_attributes');
-        refReviewAttributes.get().then(async function (snapshots) {
-            if (snapshots != undefined) {
-                snapshots.forEach((doc) => {
-                    var data = doc.data();
-                    reviewAttributes[data.id] = data.title;
+        // Simple totals fallback (MySQL only)
+        function simpleBuildTotals(order){
+            try{
+                var curr = currentCurrency;
+                var atRight = !!currencyAtRight;
+                var digits = decimal_degits || 2;
+
+                function fmt(v){
+                    v = parseFloat(v || 0).toFixed(digits);
+                    return atRight ? (v + curr) : (curr + v);
+                }
+
+                var products = Array.isArray(order.products)? order.products: [];
+                var subtotal = 0;
+                products.forEach(function(p){
+                    var unit = (p.discountPrice && parseFloat(p.discountPrice)>0) ? parseFloat(p.discountPrice) : parseFloat(p.price||0);
+                    var qty = parseInt(p.quantity||1);
+                    var extras = parseFloat(p.extras_price||0) * qty;
+                    subtotal += (unit*qty) + (isNaN(extras)?0:extras);
                 });
+                var discount = parseFloat(order.discount||0);
+                var special = (order.specialDiscount && order.specialDiscount.special_discount)? parseFloat(order.specialDiscount.special_discount):0;
+                var delivery = parseFloat(order.deliveryCharge||0);
+                var tip = parseFloat(order.tip_amount||0);
+                var sgstRate = 5, gstRate = 18;
+                var sgst = subtotal * (sgstRate/100);
+                // GST based on delivery like print page logic baseline 23
+                var baseDeliveryCharge = 23;
+                var gst = 0;
+                if(delivery>0){
+                    if(parseFloat(delivery)===baseDeliveryCharge){
+                        gst = baseDeliveryCharge * (gstRate/100);
+                    }else{
+                        gst = (delivery*(gstRate/100)) + (baseDeliveryCharge*(gstRate/100));
+                    }
+                }else{
+                    gst = baseDeliveryCharge * (gstRate/100);
+                }
+                var total = subtotal - discount - special + sgst + gst + (delivery>0?delivery:0) + (tip>0?tip:0);
+
+                var html='';
+                html += '<tr><td class="seprater" colspan="2"><hr><span>{{ trans('lang.sub_total') }}</span></td></tr>';
+                html += '<tr class="final-rate"><td class="label">Subtotal</td><td class="sub_total" style="color:green">(' + fmt(subtotal) + ')</td></tr>';
+                if(discount>0){
+                    var coupon = order.couponCode? '</br><small>{{ trans('lang.coupon_codes') }} :' + order.couponCode + '</small>' : '';
+                    html += '<tr><td class="label">{{ trans('lang.discount') }}' + coupon + '</td><td class="discount text-danger">(-' + fmt(discount) + ')</td></tr>';
+                }
+                if(special>0){
+                    html += '<tr><td class="label">{{ trans('lang.special_offer') }} {{ trans('lang.discount') }}</td><td class="special_discount text-danger">(-' + fmt(special) + ')</td></tr>';
+                }
+                html += '<tr><td class="seprater" colspan="2"><hr><span>Tax Calculation</span></td></tr>';
+                html += '<tr><td class="label">SGST ('+sgstRate+'%)</td><td class="tax_amount" id="greenColor">+' + fmt(sgst) + '</td></tr>';
+                html += '<tr><td class="label">GST ('+gstRate+'%)</td><td class="tax_amount" id="greenColor">+' + fmt(gst) + '</td></tr>';
+                html += '<tr><td class="seprater" colspan="2"><hr><span>{{ trans('lang.delivery_charge') }}</span></td></tr>';
+                html += '<tr><td class="label">{{ trans('lang.deliveryCharge') }}</td><td class="deliveryCharge" id="greenColor">+' + fmt(delivery) + '</td></tr>';
+                html += '<tr><td class="seprater" colspan="2"><hr><span>{{ trans('lang.tip') }}</span></td></tr>';
+                html += '<tr><td class="label">{{ trans('lang.tip_amount') }}</td><td class="tip_amount_val" id="greenColor">+' + fmt(tip) + '</td></tr>';
+                html += '<tr class="grand-total"><td class="label">{{ trans('lang.total_amount') }}</td><td class="total_price_val" id="greenColor">' + fmt(total) + '</td></tr>';
+                return html;
+            }catch(err){
+                console.error('simpleBuildTotals error:', err);
+                return '';
             }
-        });
+        }
+
+        //Review code GA
+        // Reviews (disabled for MySQL build - Firebase removed)
+        // Leave reviewAttributes empty
 
         function getUserReview(vendorOrder, reviewAttr) {
             var refUserReview = database.collection('foods_review').where('orderid', '==', vendorOrder.id);

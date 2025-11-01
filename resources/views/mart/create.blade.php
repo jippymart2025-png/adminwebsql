@@ -1,7 +1,7 @@
 @extends('layouts.app')
-{{-- 
+{{--
     MART CREATE FORM - FIXED VERSION
-    
+
     Issues Fixed:
     1. Added proper vendor validation (vendor selection is now required)
     2. Improved error handling with try-catch blocks for image storage
@@ -9,7 +9,7 @@
     4. Added required field indicators
     5. Enhanced validation messages
     6. Fixed image storage error handling
-    
+
     Key Features:
     - Vendor selection is mandatory
     - Proper error handling for all async operations
@@ -978,6 +978,24 @@ input[type="number"]::-webkit-inner-spin-button {
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 <script>
+    // MySQL data injected from controller
+    window.phpZones = @json(isset($zones) ? $zones : []);
+    window.phpVendors = @json(isset($vendors) ? $vendors : []);
+    (function preloadFromMySQL(){
+        try{
+            if (Array.isArray(window.phpZones)){
+                window.phpZones.forEach(function(z){
+                    $('#zone').append($('<option></option>').attr('value', z.id).text(z.name));
+                });
+            }
+            if (Array.isArray(window.phpVendors)){
+                window.phpVendors.forEach(function(v){
+                    var name = [v.firstName||'', v.lastName||''].join(' ').trim() || 'Vendor';
+                    $('#restaurant_vendors').append($('<option></option>').attr('value', v.id).text(name + (v.vendorID ? ' (Assigned)' : '')));
+                });
+            }
+        }catch(e){}
+    })();
     var createdAt=firebase.firestore.FieldValue.serverTimestamp();
     var database=firebase.firestore();
     var ref_deliverycharge=database.collection('settings').doc("DeliveryCharge");
@@ -1081,7 +1099,7 @@ input[type="number"]::-webkit-inner-spin-button {
                 // Round to appropriate decimal places based on step attribute
                 var step = $(this).attr('step');
                 var className = $(this).attr('class');
-                
+
                 // Special handling for latitude and longitude - preserve decimal precision
                 if (className && (className.includes('latitude') || className.includes('longitude'))) {
                     $(this).val(value.toFixed(6)); // Preserve 6 decimal places for coordinates
@@ -1136,17 +1154,17 @@ input[type="number"]::-webkit-inner-spin-button {
         async function loadVendors() {
             console.log('Loading mart vendors...');
             console.log('Firebase database object:', database);
-            
+
             try {
                 // Test Firebase connection first
                 console.log('Testing Firebase connection...');
                 const testSnapshot = await database.collection('users').limit(1).get();
                 console.log('Firebase connection test successful, found users:', testSnapshot.docs.length);
-                
+
                 // Get all users and filter for the exact criteria we want
                 const snapshots = await database.collection('users').get();
                 console.log('Total users found:', snapshots.docs.length);
-                
+
                 if (snapshots.docs.length === 0) {
                     console.log('No users found at all');
                     $('#restaurant_vendors').append($("<option></option>")
@@ -1154,26 +1172,26 @@ input[type="number"]::-webkit-inner-spin-button {
                         .text("No vendors available"));
                     return;
                 }
-                
+
                 var availableVendors = 0;
                 snapshots.docs.forEach((listval) => {
                     var data = listval.data();
                     console.log('User data:', data);
-                    
+
                     // Strict vendor detection - must have BOTH vType='mart' AND role='vendor'
                     var isMartVendor = (data.vType === 'mart' && data.role === 'vendor');
                     var hasName = (data.firstName && data.firstName.trim() !== "");
                     var isActive = (data.active !== false && data.status !== 'inactive');
-                    
+
                     // Check if vendor is assigned to a mart
                     var isAssigned = (data.vendorID && data.vendorID.trim() !== "");
-                    
+
                     // Filter out test users (users with suspicious names or test patterns)
                     var isNotTestUser = true;
                     var firstName = data.firstName ? data.firstName.toLowerCase() : '';
                     var lastName = data.lastName ? data.lastName.toLowerCase() : '';
                     var fullName = (firstName + ' ' + lastName).trim();
-                    
+
                     // Check for test user patterns
                     var testPatterns = ['test', 'demo', 'sample', 'example', 'pandu', 'temp', 'fake', 'dummy'];
                     testPatterns.forEach(function(pattern) {
@@ -1181,12 +1199,12 @@ input[type="number"]::-webkit-inner-spin-button {
                             isNotTestUser = false;
                         }
                     });
-                    
+
                     // Check for suspicious email patterns
                     if (data.email && (data.email.includes('test') || data.email.includes('example.com'))) {
                         isNotTestUser = false;
                     }
-                    
+
                     console.log('User check:', {
                         id: data.id,
                         firstName: data.firstName,
@@ -1200,13 +1218,13 @@ input[type="number"]::-webkit-inner-spin-button {
                         isActive: isActive,
                         isNotTestUser: isNotTestUser
                     });
-                    
+
                     if (isMartVendor && hasName && isActive && isNotTestUser) {
                         var displayText = data.firstName + " " + (data.lastName || "");
                         if (isAssigned) {
                             displayText += " (Assigned)";
                         }
-                        
+
                         $('#restaurant_vendors').append($("<option></option>")
                             .attr("value", data.id)
                             .text(displayText));
@@ -1221,20 +1239,20 @@ input[type="number"]::-webkit-inner-spin-button {
                         });
                     }
                 });
-                
+
                 console.log('Total available vendor options:', availableVendors);
-                
+
                 if (availableVendors === 0) {
                     $('#restaurant_vendors').append($("<option></option>")
                         .attr("value", "")
                         .text("No available vendors (all are assigned)"));
-                    
+
                     // Add option to create mart without vendor (admin created)
                     $('#restaurant_vendors').append($("<option></option>")
                         .attr("value", "admin_created")
                         .text("Create without vendor (Admin)"));
                 }
-                
+
             } catch (error) {
                 console.error('Error fetching vendors:', error);
                 $('#restaurant_vendors').append($("<option></option>")
@@ -1373,10 +1391,17 @@ input[type="number"]::-webkit-inner-spin-button {
         var adminCommissionValue=$(".admin_commission").val();
         var zoneId=$('#zone option:selected').val();
         var zoneArea=$('#zone option:selected').data('area');
-        var isInZone=false;
-        if(zoneId&&zoneArea) {
-            isInZone=checkLocationInZone(zoneArea,longitude,latitude);
-        }
+        // When no polygon is available (MySQL build), allow saving
+        var isInZone=true;
+        try{
+            if(zoneId && zoneArea){
+                // Ensure array of {latitude,longitude}
+                if (typeof zoneArea === 'string') { zoneArea = JSON.parse(zoneArea); }
+                if (Array.isArray(zoneArea) && zoneArea.length>0){
+                    isInZone = checkLocationInZone(zoneArea, longitude, latitude);
+                }
+            }
+        }catch(e){ isInZone=true; }
 
         var enabledDiveInFuture=$("#dine_in_feature").is(':checked');
         var isOpen = $("#is_open").is(':checked');
@@ -1390,11 +1415,11 @@ input[type="number"]::-webkit-inner-spin-button {
 
         // Check if vendor is selected and valid
         if(selectedOwnerId && selectedOwnerId != '' && selectedOwnerId != null && selectedOwnerId != undefined && selectedOwnerId !== "No vendors available" && selectedOwnerId !== "Error loading vendors") {
-            
+
             // Handle assigned vendors (marked with |assigned)
             var actualVendorId = selectedOwnerId;
             var isAssignedVendor = false;
-            
+
             if (selectedOwnerId.includes('|assigned')) {
                 actualVendorId = selectedOwnerId.split('|')[0];
                 isAssignedVendor = true;
@@ -1669,7 +1694,7 @@ input[type="number"]::-webkit-inner-spin-button {
             console.log('Category IDs:', categoryIDs);
             console.log('Category Titles:', categoryTitles);
             console.log('Working Hours:', workingHours);
-            
+
             // Show loading state
             jQuery("#data-table_processing").show();
             $('.save-form-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating Mart...');
@@ -1739,7 +1764,7 @@ input[type="number"]::-webkit-inner-spin-button {
             try {
                 // Store all images
                 console.log('Storing images...');
-                
+
                 let IMG, GalleryIMG, MenuIMG;
                 try {
                     IMG = await storeImageData();
@@ -1767,7 +1792,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
                 // Create mart data with proper validation
                 const coordinates = new firebase.firestore.GeoPoint(latitude, longitude);
-                
+
                 // Debug logging to check values
                 console.log('Debug - restaurantname:', restaurantname);
                 console.log('Debug - description:', description);
@@ -1781,16 +1806,16 @@ input[type="number"]::-webkit-inner-spin-button {
                 console.log('Debug - user_id:', user_id);
                 console.log('Debug - user_name:', user_name);
                 console.log('Debug - adminCommission:', adminCommission);
-                
+
                 // Final validation before creating mart
                 if (!restaurantname || !description || !address || !zoneId) {
                     throw new Error('Required fields are missing. Please check all required fields.');
                 }
-                
+
                 if (!categoryIDs || categoryIDs.length === 0 || (categoryIDs.length === 1 && categoryIDs[0] === '')) {
                     throw new Error('Please select at least one category.');
                 }
-                
+
                 const martData = {
                     'title': restaurantname || '',
                     'description': description || '',
@@ -1830,23 +1855,35 @@ input[type="number"]::-webkit-inner-spin-button {
                 };
 
                 // Update user vendorID if not admin created
-                if (user_id !== "admin_created") {
-                    console.log('Updating user vendorID:', user_id, 'with restaurant ID:', restaurant_id);
-                    await database.collection('users').doc(user_id).update({
-                        'vendorID': restaurant_id,
-                    });
-                    console.log('User vendorID updated successfully');
-                } else {
-                    console.log('Skipping user update for admin created restaurant');
-                }
+                // SQL controller will link user->vendorID when author is provided
 
-                // Create mart with error handling
+                // Create mart via MySQL endpoint
                 try {
-                    await database.collection('vendors').doc(restaurant_id).set(martData);
-                    console.log('Mart created successfully');
+                    await $.ajax({
+                        url: '{{ route("marts.store") }}',
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        data: Object.assign({}, martData, {
+                            createdAt: '',
+                            // Coerce complex fields to JSON strings for the controller to normalize
+                            categoryID: JSON.stringify(martData.categoryID || []),
+                            categoryTitle: JSON.stringify(martData.categoryTitle || []),
+                            photos: JSON.stringify(martData.photos || []),
+                            restaurantMenuPhotos: JSON.stringify(martData.restaurantMenuPhotos || []),
+                            filters: JSON.stringify(martData.filters || {}),
+                            workingHours: JSON.stringify(martData.workingHours || []),
+                            specialDiscount: JSON.stringify(martData.specialDiscount || []),
+                            adminCommission: JSON.stringify(martData.adminCommission || {})
+                        })
+                    });
+                    console.log('Mart created successfully (MySQL)');
                 } catch (error) {
-                    console.error('Error creating mart in Firestore:', error);
-                    throw new Error('Failed to save mart data: ' + error.message);
+                    try {
+                        console.error('Error creating mart (MySQL):', error);
+                        var msg = (error && error.responseJSON && error.responseJSON.error) ? error.responseJSON.error : (error.responseText || 'Failed to save mart data');
+                        alert('Create failed: ' + msg);
+                    } catch(e) {}
+                    throw new Error('Failed to save mart data');
                 }
 
                 console.log('✅ Mart saved successfully, now logging activity...');

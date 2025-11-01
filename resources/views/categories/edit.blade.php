@@ -70,7 +70,7 @@
                                             <input type="checkbox" id="show_in_homepage">
                                             <label class="col-3 control-label" for="show_in_homepage">{{trans('lang.show_in_home')}}</label>
                                             <div class="form-text text-muted w-50">{{trans('lang.show_in_home_desc')}}<span id="forsection"></span></div>
-                                        </div>            
+                                        </div>
                                     </fieldset>
                                 </div>
                                 <div role="tabpanel" class="tab-pane" id="review_attributes">
@@ -92,191 +92,49 @@
 @section('scripts')
 <script>
 var id = "<?php echo $id;?>";
-var database = firebase.firestore();
-var ref = database.collection('vendor_categories').where("id", "==", id);
-var photo = "";
-var fileName="";
-var catImageFile="";
-var placeholderImage = '';
-var placeholder = database.collection('settings').doc('placeHolderImage');
-var ref_review_attributes = database.collection('review_attributes');
-var category = '';
-var storageRef = firebase.storage().ref('images');
-var storage = firebase.storage();
-placeholder.get().then(async function (snapshotsimage) {
-    var placeholderImageData = snapshotsimage.data();
-    placeholderImage = placeholderImageData.image;
-})
-$(document).ready(function () {
-    jQuery("#data-table_processing").show();
-    ref.get().then(async function (snapshots) {
-        category = snapshots.docs[0].data();
-        $(".cat-name").val(category.title);
-        $(".category_description").val(category.description);
-        if (category.photo != '' && category.photo != null) {
-              photo = category.photo;
-              catImageFile=category.photo;
-              $(".cat_image").append('<img onerror="this.onerror=null;this.src=\'' + placeholderImage + '\'" class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-        } else {
-            $(".cat_image").append('<img class="rounded" style="width:50px" src="' + placeholderImage + '" alt="image">');
-        }
-        if (category.publish) {
-            $("#item_publish").prop('checked', true);
-        }
-        if (category.show_in_homepage) {
-            $("#show_in_homepage").prop('checked', true);
-        }
-        jQuery("#data-table_processing").hide();
-    })
-    ref_review_attributes.get().then(async function (snapshots) {
-        var ra_html = '';
-        snapshots.docs.forEach((listval) => {
-            var data = listval.data();
-            ra_html += '<div class="form-check width-100" >';
-            var checked = $.inArray(data.id, category.review_attributes) !== -1 ? 'checked' : '';
-            ra_html += '<input type="checkbox" id="review_attribute_' + data.id + '" value="' + data.id + '" ' + checked + '>';
-            ra_html += '<label class="col-3 control-label" for="review_attribute_' + data.id + '">' + data.title + '</label>';
-            ra_html += '</div>';
-        })
-        $('#review_attributes').html(ra_html);
-    })
-    $(".edit-setting-btn").click(async function () {
+var category = {!! json_encode($category ?? null) !!};
+$(document).ready(function(){
+    if(!category){
+        $(".error_top").show().html('<p>Error: Category not found.</p>');
+    } else {
+        $(".cat-name").val(category.title || '');
+        $(".category_description").val(category.description || '');
+        if(category.photo){ $(".cat_image").append('<img class="rounded" style="width:50px" src="'+category.photo+'" alt="image">'); }
+        if(parseInt(category.publish)) $("#item_publish").prop('checked', true);
+        if(parseInt(category.show_in_homepage)) $("#show_in_homepage").prop('checked', true);
+    }
+    $(".edit-setting-btn").on('click', function(){
         var title = $(".cat-name").val();
         var description = $(".category_description").val();
         var item_publish = $("#item_publish").is(":checked");
         var show_in_homepage = $("#show_in_homepage").is(":checked");
         var review_attributes = [];
-        $('#review_attributes input').each(function () {
-            if ($(this).is(':checked')) {
-                review_attributes.push($(this).val());
-            }
-        });
-        if (title == '') {
-            $(".error_top").show();
-            $(".error_top").html("");
-            $(".error_top").append("<p>{{trans('lang.enter_cat_title_error')}}</p>");
-            window.scrollTo(0, 0);
-        } else {
-            var count_vendor_categories = 0;
-            if (show_in_homepage) {
-                await database.collection('vendor_categories').where('show_in_homepage', "==", true).where("id", "!=", id).get().then(async function (snapshots) {
-                    count_vendor_categories = snapshots.docs.length;
-                });
-            }
-            if (count_vendor_categories >= 5) {
-                alert("Already 5 categories are active for show in homepage..");
-                return false;
-            } else {
-            jQuery("#data-table_processing").show();
-            storeImageData().then(IMG => {
-            database.collection('vendor_categories').doc(id).update({
-                'title': title,
-                'description': description,
-                'photo': IMG,
-                'review_attributes': review_attributes,
-                'publish': item_publish,
-                'show_in_homepage': show_in_homepage,
-            }).then(async function (result) {
-                console.log('✅ Category updated successfully, now logging activity...');
-                try {
-                    if (typeof logActivity === 'function') {
-                        console.log('🔍 Calling logActivity for category update...');
-                        await logActivity('categories', 'updated', 'Updated category: ' + title);
-                        console.log('✅ Activity logging completed successfully');
-                    } else {
-                        console.error('❌ logActivity function is not available');
-                    }
-                } catch (error) {
-                    console.error('❌ Error calling logActivity:', error);
-                }
-                jQuery("#data-table_processing").hide();
-                window.location.href = '{{ route("categories")}}';
-            });
-             }).catch(err => {
-                jQuery("#data-table_processing").hide();
-                $(".error_top").show();
-                $(".error_top").html("");
-                $(".error_top").append("<p>" + err + "</p>");
-                window.scrollTo(0, 0);
-            });
+        $('#review_attributes input').each(function(){ if($(this).is(':checked')) review_attributes.push($(this).val()); });
+        if(!title){
+            $(".error_top").show().html("<p>{{trans('lang.enter_cat_title_error')}}</p>");
+            window.scrollTo(0,0); return;
         }
-        }
+        var fd = new FormData();
+        fd.append('title', title);
+        fd.append('description', description);
+        fd.append('publish', item_publish ? 1 : 0);
+        fd.append('show_in_homepage', show_in_homepage ? 1 : 0);
+        review_attributes.forEach(function(v){ fd.append('review_attributes[]', v); });
+        if($('#category_image')[0] && $('#category_image')[0].files[0]){ fd.append('photo', $('#category_image')[0].files[0]); }
+        $.ajax({
+            url: '{{ url('/categories') }}' + '/' + id,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            data: fd,
+            processData: false,
+            contentType: false
+        }).done(function(){ window.location.href='{{ route('categories') }}'; })
+          .fail(function(xhr){
+            var msg = 'Failed to update';
+            if(xhr.responseJSON && xhr.responseJSON.message){ msg = xhr.responseJSON.message; }
+            $(".error_top").show().html('<p>'+msg+'</p>');
+          });
     });
-});
-function handleFileSelect(evt) {
-    var f = evt.target.files[0];
-    var reader = new FileReader();
-    reader.onload = (function (theFile) {
-        return function (e) {
-            var filePayload = e.target.result;
-            var val = $('#category_image').val().toLowerCase();
-            var ext = val.split('.')[1];
-            var docName = val.split('fakepath')[1];
-            var filename = $('#category_image').val().replace(/C:\\fakepath\\/i, '')
-            var timestamp = Number(new Date());
-            var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-            var uploadTask = storageRef.child(filename).put(theFile);
-            uploadTask.on('state_changed', function (snapshot) {
-                var progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            }, function (error) {
-            }, function () {
-                uploadTask.snapshot.ref.getDownloadURL().then(function (downloadURL) {
-                    jQuery("#uploding_image").text("Upload is completed");
-                    photo = downloadURL;
-                    $(".cat_image").empty();
-                    $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-                });
-            });
-        };
-    })(f);
-    reader.readAsDataURL(f);
-}
-async function storeImageData() {
-            var newPhoto = '';
-            try {
-                if (catImageFile != "" && photo != catImageFile) {
-                    var catOldImageUrlRef = await storage.refFromURL(catImageFile);
-                    imageBucket = catOldImageUrlRef.bucket; 
-                    var envBucket = "<?php echo env('FIREBASE_STORAGE_BUCKET'); ?>";
-                    if (imageBucket == envBucket) {
-                        await catOldImageUrlRef.delete().then(() => {
-                            console.log("Old file deleted!")
-                        }).catch((error) => {
-                            console.log("ERR File delete ===", error);
-                        });
-                    } else {
-                        console.log('Bucket not matched');  
-                    }
-                } 
-                if (photo != catImageFile) {
-                    photo = photo.replace(/^data:image\/[a-z]+;base64,/, "")
-                    var uploadTask = await storageRef.child(fileName).putString(photo, 'base64', { contentType: 'image/jpg' });
-                    var downloadURL = await uploadTask.ref.getDownloadURL();
-                    newPhoto = downloadURL;
-                    photo = downloadURL;
-                } else {
-                    newPhoto = photo;
-                }
-            } catch (error) {
-                console.log("ERR ===", error);
-            }
-            return newPhoto;
-        }  
-//upload image with compression
-$("#category_image").resizeImg({
-    callback: function(base64str) {
-        var val = $('#category_image').val().toLowerCase();
-        var ext = val.split('.')[1];
-        var docName = val.split('fakepath')[1];
-        var filename = $('#category_image').val().replace(/C:\\fakepath\\/i, '')
-        var timestamp = Number(new Date());
-        var filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
-        photo=base64str;
-        fileName=filename;
-        $(".cat_image").empty();
-        $(".cat_image").append('<img class="rounded" style="width:50px" src="' + photo + '" alt="image">');
-        $("#category_image").val('');
-    }
 });
 </script>
 @endsection

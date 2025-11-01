@@ -272,13 +272,17 @@
                     var id = "<?php echo $id; ?>";
                     var order = @json($order);
                     var currency = @json($currency ?? (object)[]);
-                    
+
                     // Currency settings
                     var currentCurrency = currency?.symbol || '₹';
                     var currencyAtRight = currency?.symbolAtRight || false;
                     var decimal_degits = currency?.decimal_degits || 2;
                     var place_image = '{{ asset("images/placeholder.png") }}';
-                    
+                    // Initialize accumulators used in builders
+                    var total_price = 0;
+                    var total_addon_price = 0;
+                    var total_item_price = 0;
+
                     // Populate order details
                     var customerName = (order.user_first_name || '') + ' ' + (order.user_last_name || '');
                     if (!customerName.trim() && order.author && order.author.firstName) {
@@ -286,19 +290,23 @@
                     }
                     $(".customerName").text(customerName.trim() || 'N/A');
                     $(".orderId").text(id);
-                    
+
                     // Order date
                     if (order.createdAt) {
                         try {
                             var date = new Date(order.createdAt);
-                            var dateStr = date.toDateString();
-                            var time = date.toLocaleTimeString('en-US');
-                            $(".orderDate").text(dateStr + " " + time);
+                            if (!isNaN(date.getTime())) {
+                                var dateStr = date.toDateString();
+                                var time = date.toLocaleTimeString('en-US');
+                                $(".orderDate").text(dateStr + " " + time);
+                            } else {
+                                $(".orderDate").text(order.createdAt);
+                            }
                         } catch(e) {
                             $(".orderDate").text(order.createdAt);
                         }
                     }
-                    
+
                     // Billing address
                             var billingAddressstring = '';
                     if (order.address && order.address.address) {
@@ -311,11 +319,11 @@
                                 billingAddressstring = billingAddressstring + " " + order.address.landmark;
                             }
                             $(".customerAddress").text(billingAddressstring);
-                    
+
                     // Customer phone
                     var customerPhone = order.user_phone || (order.author && order.author.phoneNumber) || '';
                     $(".customerPhone").text(customerPhone ? shortEditNumber(customerPhone) : "");
-                    
+
                     // Store/vendor information
                     if (order.vendor_title) {
                         $('.storeName').html(order.vendor_title);
@@ -331,7 +339,7 @@
                                 } else {
                         $('.resturant-img').attr('src', place_image);
                     }
-                    
+
                     // Product list
                     var append_procucts_list = document.getElementById('order_products');
                             append_procucts_list.innerHTML = '';
@@ -341,7 +349,7 @@
                             if (productsListHTML != '') {
                                 append_procucts_list.innerHTML = productsListHTML;
                             }
-                    
+
                     // Fill order summary
                             fillPrintOrderSummary(order);
 
@@ -613,37 +621,16 @@
                         var currentCurrency = currentCurrency || '₹';
                         var products = order.products;
 
-                        // Calculate subtotal from products with promotional pricing support
-                        if (products) {
-                            console.log('💰 ===== CALCULATING SUBTOTAL WITH PROMOTIONAL SUPPORT (PRINT) =====');
-                            console.log('💰 Vendor ID for promotional check:', order.vendorID);
-
-                            // Try to use promotional pricing if vendor ID is available
-                            if (order.vendorID && promotionalTotals) {
-                                try {
-                                    console.log('💰 Using promotional subtotal:', promotionalTotals.promotionalSubtotal);
-                                    subtotal = promotionalTotals.promotionalSubtotal;
-                                } catch (error) {
-                                    console.error('❌ Error using promotional subtotal:', error);
-                                    // Fallback to original calculation
-                                    products.forEach(function (product) {
-                                        // Use discountPrice only if it exists and is greater than 0, otherwise use price
-                                        var price = (product.discountPrice && parseFloat(product.discountPrice) > 0)
-                                            ? parseFloat(product.discountPrice)
-                                            : parseFloat(product.price);
-                                        subtotal += price * (parseInt(product.quantity) || 1);
-                                    });
-                                }
-                            } else {
-                                console.log('💰 No promotional totals available, using original calculation');
-                                products.forEach(function (product) {
-                                    // Use discountPrice only if it exists and is greater than 0, otherwise use price
-                                    var price = (product.discountPrice && parseFloat(product.discountPrice) > 0)
-                                        ? parseFloat(product.discountPrice)
-                                        : parseFloat(product.price);
-                                    subtotal += price * (parseInt(product.quantity) || 1);
-                                });
-                            }
+                        // Calculate subtotal from products (MySQL) – no dependency on promotionalTotals
+                        if (products && products.length) {
+                            products.forEach(function (product) {
+                                var price = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+                                    ? parseFloat(product.discountPrice)
+                                    : parseFloat(product.price || 0);
+                                var qty = parseInt(product.quantity) || 1;
+                                var extras = parseFloat(product.extras_price || 0) * qty;
+                                subtotal += (price * qty) + (isNaN(extras) ? 0 : extras);
+                            });
                         }
 
                         // Calculate total price including extras
@@ -786,121 +773,16 @@
 
                     // Clean and robust promotional price checking function with proper hierarchy
                     async function getPromotionalPrice(product, vendorID) {
-                        try {
-                            console.log('🔍 ===== PROMOTIONAL PRICE CHECK START (PRINT) =====');
-                            console.log('🔍 Product Details:', {
-                                id: product.id,
-                                name: product.name,
-                                price: product.price,
-                                discountPrice: product.discountPrice,
-                                vendorID: vendorID
-                            });
-
-                            // HIERARCHY: 1. Promo price, 2. discountPrice (>0), 3. price
-                            console.log('🔍 ===== CHECKING PRICE HIERARCHY (PRINT) =====');
-
-                            // Step 1: Check for active promotional prices
-                            console.log('🔍 Step 1: Checking for promotional prices...');
-                            const promotionQuery = database.collection('promotions')
-                                .where('product_id', '==', product.id)
-                                .where('restaurant_id', '==', vendorID)
-                                .where('isAvailable', '==', true);
-
-                            const promotionSnapshot = await promotionQuery.get();
-
-                            if (!promotionSnapshot.empty) {
-                                console.log('🔍 Found', promotionSnapshot.docs.length, 'promotions, checking time validity...');
-
-                                const now = firebase.firestore.Timestamp.now();
-
-                                // Check each promotion for time validity
-                                for (const doc of promotionSnapshot.docs) {
-                                    const promotionData = doc.data();
-
-                                    const startTime = promotionData.start_time;
-                                    const endTime = promotionData.end_time;
-
-                                    // Check if promotion is currently active
-                                    const isAfterStart = !startTime || now >= startTime;
-                                    const isBeforeEnd = !endTime || now <= endTime;
-                                    const isActive = isAfterStart && isBeforeEnd;
-
-                                    if (isActive) {
-                                        console.log('🎯 ===== PROMOTIONAL PRICE FOUND (HIERARCHY 1) (PRINT) =====');
-                                        console.log('🎯 Product:', product.name);
-
-                                        // For promotional price, we need to determine the original price for comparison
-                                        // Use hierarchy: discountPrice (>0) or price
-                                        const originalPrice = (product.discountPrice && parseFloat(product.discountPrice) > 0)
-                                            ? parseFloat(product.discountPrice)
-                                            : parseFloat(product.price);
-
-                                        console.log('🎯 Original Price (for comparison):', originalPrice);
-                                        console.log('🎯 Special Price:', promotionData.special_price);
-
-                                        return {
-                                            price: parseFloat(promotionData.special_price),
-                                            isPromotional: true,
-                                            promotionId: doc.id,
-                                            originalPrice: originalPrice
-                                        };
-                                    }
-                                }
-
-                                console.log('ℹ️ No active promotions found (time-based filtering)');
-                            } else {
-                                console.log('ℹ️ No promotions found for this product');
-                            }
-
-                            // Step 2: Check discountPrice (if > 0)
-                            console.log('🔍 Step 2: Checking discountPrice...');
-                            if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
-                                console.log('🎯 ===== DISCOUNT PRICE FOUND (HIERARCHY 2) (PRINT) =====');
-                                console.log('🎯 Product:', product.name);
-                                console.log('🎯 Using discountPrice:', product.discountPrice);
-
-                                return {
-                                    price: parseFloat(product.discountPrice),
-                                    isPromotional: false,
-                                    promotionId: null,
-                                    originalPrice: parseFloat(product.discountPrice)
-                                };
-                            }
-
-                            // Step 3: Use regular price (fallback)
-                            console.log('🔍 Step 3: Using regular price (fallback)...');
-                            console.log('ℹ️ ===== USING REGULAR PRICE (HIERARCHY 3) (PRINT) =====');
-                            console.log('ℹ️ Product:', product.name);
-                            console.log('ℹ️ Using regular price:', product.price);
-
-                            return {
-                                price: parseFloat(product.price),
-                                isPromotional: false,
-                                promotionId: null,
-                                originalPrice: parseFloat(product.price)
-                            };
-
-                        } catch (error) {
-                            console.error('❌ ===== ERROR IN PROMOTIONAL PRICE CHECK (PRINT) =====');
-                            console.error('❌ Error details:', error);
-
-                            // Error fallback: Use hierarchy
-                            let errorPrice;
-                            if (product.discountPrice && parseFloat(product.discountPrice) > 0) {
-                                errorPrice = parseFloat(product.discountPrice);
-                                console.error('❌ Error fallback: Using discountPrice');
-                            } else {
-                                errorPrice = parseFloat(product.price);
-                                console.error('❌ Error fallback: Using regular price');
-                            }
-
-                            return {
-                                price: errorPrice,
-                                isPromotional: false,
-                                promotionId: null,
-                                originalPrice: errorPrice
-                            };
-                        }
+                        // MySQL version: simply use discountPrice (>0) else price
+                        var price = (product.discountPrice && parseFloat(product.discountPrice) > 0)
+                            ? parseFloat(product.discountPrice)
+                            : parseFloat(product.price);
+                        return {
+                            price: price,
+                            isPromotional: false,
+                            promotionId: null,
+                            originalPrice: price
+                        };
                     }
 
                     // Enhanced function to build product list with promotional pricing

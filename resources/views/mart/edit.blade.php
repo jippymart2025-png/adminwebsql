@@ -811,6 +811,88 @@ foreach ($countries as $keycountry => $valuecountry) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.26.0/moment.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/compressorjs/1.1.1/compressor.min.js" integrity="sha512-VaRptAfSxXFAv+vx33XixtIVT9A/9unb1Q8fp63y1ljF+Sbka+eMJWoDAArdm7jOYuLQHVx5v60TQ+t3EA8weA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
+    // MySQL data injected from controller
+    window.phpMart = @json(isset($mart) ? $mart : null);
+    window.phpZones = @json(isset($zones) ? $zones : []);
+    window.phpOwner = @json(isset($owner) ? $owner : null);
+    (function preloadFromMySQL(){
+        try{
+            if (Array.isArray(window.phpZones)){
+                window.phpZones.forEach(function(z){
+                    if ($('#zone option[value="'+z.id+'"]').length===0){
+                        $('#zone').append($('<option></option>').attr('value', z.id).text(z.name));
+                    }
+                });
+            }
+            if (window.phpMart){
+                if (window.phpMart.title) { $('.restaurant_name').val(window.phpMart.title); }
+                if (window.phpMart.phonenumber) { $('.restaurant_phone').val(window.phpMart.phonenumber); }
+                if (window.phpMart.location) { $('.restaurant_address').val(window.phpMart.location); }
+                if (window.phpMart.zoneId) { $('#zone').val(window.phpMart.zoneId); }
+                // Country code preselect (strip leading '+')
+                if (window.phpMart.countryCode){
+                    var cc = (''+window.phpMart.countryCode).replace(/^\+/,'');
+                    $('#country_selector1').val(cc).trigger('change');
+                }
+                // Admin commission
+                try{
+                    var ac = window.phpMart.adminCommission;
+                    if (typeof ac === 'string'){ ac = JSON.parse(ac); }
+                    if (ac && typeof ac === 'object'){
+                        if (ac.commissionType){ $('#commission_type').val(ac.commissionType); }
+                        if (ac.fix_commission != null){ $('.commission_fix').val(ac.fix_commission); }
+                    }
+                }catch(e){}
+                // Categories preselect
+                try{
+                    var catIds = window.phpMart.categoryID; if (typeof catIds === 'string'){ catIds = JSON.parse(catIds); }
+                    var catTitles = window.phpMart.categoryTitle; if (typeof catTitles === 'string'){ catTitles = JSON.parse(catTitles); }
+                    if (Array.isArray(catIds) && Array.isArray(catTitles) && catIds.length === catTitles.length){
+                        for (var i=0;i<catIds.length;i++){
+                            var id = catIds[i]; var txt = catTitles[i];
+                            if ($('#restaurant_cuisines option[value="'+id+'"]').length===0){
+                                $('#restaurant_cuisines').append($('<option></option>').attr('value', id).text(txt));
+                            }
+                        }
+                        $('#restaurant_cuisines').val(catIds).trigger('change');
+                    }
+                }catch(e){}
+            } else {
+                // Fallback: fetch from SQL JSON endpoint when PHP mart is missing
+                $.getJSON('{{ route("marts.json", ":id") }}'.replace(':id', id))
+                    .done(function(resp){
+                        if (resp && resp.success){
+                            var m = resp.vendor || {};
+                            $('.restaurant_name').val(m.title || '');
+                            $('.restaurant_phone').val(m.phonenumber || '');
+                            $('.restaurant_address').val(m.location || '');
+                            if (m.zoneId){ $('#zone').val(m.zoneId); }
+                            if (m.countryCode){ var cc = (''+m.countryCode).replace(/^\+/,''); $('#country_selector1').val(cc).trigger('change'); }
+                            try{
+                                var ac = m.adminCommission; if (typeof ac === 'string'){ ac = JSON.parse(ac); }
+                                if (ac && typeof ac === 'object'){
+                                    if (ac.commissionType){ $('#commission_type').val(ac.commissionType); }
+                                    if (ac.fix_commission != null){ $('.commission_fix').val(ac.fix_commission); }
+                                }
+                            }catch(e){}
+                            try{
+                                var catIds = m.categoryID; if (typeof catIds === 'string'){ catIds = JSON.parse(catIds); }
+                                var catTitles = m.categoryTitle; if (typeof catTitles === 'string'){ catTitles = JSON.parse(catTitles); }
+                                if (Array.isArray(catIds) && Array.isArray(catTitles)){
+                                    for (var i=0;i<catIds.length;i++){
+                                        var idv = catIds[i]; var txt = catTitles[i] || idv;
+                                        if ($('#restaurant_cuisines option[value="'+idv+'"]').length===0){
+                                            $('#restaurant_cuisines').append($('<option></option>').attr('value', idv).text(txt));
+                                        }
+                                    }
+                                    $('#restaurant_cuisines').val(catIds).trigger('change');
+                                }
+                            }catch(e){}
+                        }
+                    });
+            }
+        }catch(e){}
+    })();
     var id = "<?php echo $id; ?>";
     var rest_id = "<?php echo $id; ?>";
     var database = firebase.firestore();
@@ -1351,10 +1433,16 @@ foreach ($countries as $keycountry => $valuecountry) {
             var restaurantCost = $(".restaurant_cost").val();
             var zoneId = $('#zone option:selected').val();
             var zoneArea = $('#zone option:selected').data('area');
-            var isInZone = false;
-            if(zoneId && zoneArea){
-                isInZone = checkLocationInZone(zoneArea,longitude,latitude);
-            }
+            // Allow when polygon not provided; enforce only if area vertices exist
+            var isInZone = true;
+            try{
+                if(zoneId && zoneArea){
+                    if (typeof zoneArea === 'string') { zoneArea = JSON.parse(zoneArea); }
+                    if (Array.isArray(zoneArea) && zoneArea.length>0){
+                        isInZone = checkLocationInZone(zoneArea, longitude, latitude);
+                    }
+                }
+            }catch(e){ isInZone = true; }
             var commissionType = $("#commission_type").val();
             var fixCommission = $(".commission_fix").val();
             const adminCommission = {
@@ -1600,34 +1688,40 @@ foreach ($countries as $keycountry => $valuecountry) {
                     await storeImageData().then(async (IMG) => {
                         await storeGalleryImageData().then(async (GalleryIMG) => {
                                                             await storeMenuImageData().then(async (MenuIMG) => {
-                                    database.collection('vendors').doc(id).update({
-                                        'title': restaurantname,
-                                        'description': description,
-                                        'latitude': latitude,
-                                        'longitude': longitude,
-                                        'location': address,
-                                        'photo':  (Array.isArray(GalleryIMG) && GalleryIMG.length > 0) ? GalleryIMG[0] : null,
-                                        'photos': GalleryIMG,
-                                        'categoryID': categoryIDs,
-                                        'categoryTitle': categoryTitles,
-                                        'countryCode': rescountryCode,
-                                        'phonenumber': phonenumber,
-                                        'coordinates': coordinates,
-                                        'filters': filters_new,
-                                        'reststatus': reststatus,
-                                        'isOpen': isOpen,
-                                        'enabledDiveInFuture': enabledDiveInFuture,
-                                        'restaurantMenuPhotos': MenuIMG,
-                                        'restaurantCost': restaurantCost,
-                                        'openDineTime': openDineTime,
-                                        'closeDineTime': closeDineTime,
-                                        'DeliveryCharge': DeliveryCharge,
-                                        'specialDiscount': specialDiscount,
-                                        'specialDiscountEnable':specialDiscountEnable,
-                                        'workingHours': workingHours,
-                                        'zoneId': zoneId,
-                                        'adminCommission':adminCommission
-                                    }).then(async function(result) {
+                                    // Update mart via MySQL endpoint
+                                    $.ajax({
+                                        url: '{{ route("marts.update", ":id") }}'.replace(':id', id),
+                                        method: 'POST',
+                                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                                        data: {
+                                            id: id,
+                                            title: restaurantname,
+                                            description: description,
+                                            latitude: latitude,
+                                            longitude: longitude,
+                                            location: address,
+                                            photo: (Array.isArray(GalleryIMG) && GalleryIMG.length > 0) ? GalleryIMG[0] : null,
+                                            photos: JSON.stringify(GalleryIMG || []),
+                                            categoryID: JSON.stringify(categoryIDs || []),
+                                            categoryTitle: JSON.stringify(categoryTitles || []),
+                                            countryCode: rescountryCode,
+                                            phonenumber: phonenumber,
+                                            filters: JSON.stringify(filters_new || {}),
+                                            isOpen: isOpen ? 1 : 0,
+                                            enabledDelivery: enabledDiveInFuture ? 1 : 0,
+                                            restaurantMenuPhotos: JSON.stringify(MenuIMG || []),
+                                            restaurantCost: restaurantCost,
+                                            openDineTime: openDineTime,
+                                            closeDineTime: closeDineTime,
+                                            specialDiscount: JSON.stringify(specialDiscount || []),
+                                            specialDiscountEnable: specialDiscountEnable ? 1 : 0,
+                                            workingHours: JSON.stringify(workingHours || []),
+                                            zoneId: zoneId,
+                                            adminCommission: JSON.stringify(adminCommission),
+                                            author: vendorUserId || '',
+                                            authorName: (typeof user_name !== 'undefined' ? user_name : '')
+                                        }
+                                    }).then(async function() {
                                         console.log('✅ Mart updated successfully, now logging activity...');
                                         try {
                                             if (typeof logActivity === 'function') {

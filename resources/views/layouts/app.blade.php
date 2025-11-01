@@ -1737,6 +1737,10 @@
 
         // Initialize real-time listener for new orders
         function initializeOrderListener() {
+            // Guard: disable if Firebase/database not available
+            if (typeof database === 'undefined' || !database || typeof database.collection !== 'function') {
+                return;
+            }
             // console.log('Initializing enhanced global order notification listener...');
 
             // Get existing orders to populate knownOrderIds and recent orders
@@ -2013,6 +2017,11 @@
             updateSoundToggleIcon();
         }
 
+        // Global toggle to enable/disable realtime Firebase listener (MySQL build keeps this OFF)
+        if (typeof window.ENABLE_REALTIME_NOTIFICATIONS === 'undefined') {
+            window.ENABLE_REALTIME_NOTIFICATIONS = false;
+        }
+
         // Initialize the enhanced notification system when DOM is ready
         $(document).ready(function() {
             // Clear notification badge on page load to prevent accumulation
@@ -2034,7 +2043,7 @@
                                      currentPath.includes('/zone/bonus-settings') ||
                                      currentPath.includes('/test/');
 
-                if (!isSettingsPage) {
+                if (!isSettingsPage && window.ENABLE_REALTIME_NOTIFICATIONS === true) {
                     initializeOrderListener();
                 }
 
