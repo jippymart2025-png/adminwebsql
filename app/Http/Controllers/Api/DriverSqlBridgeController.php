@@ -2,17 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Api\FirestoreUtilsController;
 use App\Mail\SetEmailData;
-use App\Models\Driver;
-use App\Models\DriverPayout;
+use App\Models\ChatDriver;
 use App\Models\documents_verify;
+use App\Models\DriverPayout;
+use App\Models\DriverWalletTransaction;
 use App\Models\OnBoarding;
-use App\Models\Order_Billing;
 use App\Models\restaurant_orders;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\Vendor;
+use App\Models\zone_bonus_settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -21,7 +21,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Throwable;
 
 class DriverSqlBridgeController extends FirestoreUtilsController
@@ -1145,87 +1144,269 @@ class DriverSqlBridgeController extends FirestoreUtilsController
         return round($driverAmount, 2);
     }
 
+//    public function getCurrentOrder(Request $request)
+//    {
+//        $driverId = $request->driver_id;       // <---- Driver User Id
+//        $singleOrderReceive = $request->single_order_receive; // bool like Flutter Constant.singleOrderReceive
+//        $currentOrderId = $request->current_order_id;         // currentOrder.value.id
+//        $argumentOrderId = $request->argument_order_id;       // orderModel.value.id (last condition)
+//
+//        // Fetch Driver Data
+//        $driver = User::where('id', $driverId)->first();
+//        if(!$driver){
+//            return response()->json(["success"=>false,"message"=>"Driver not found"],404);
+//        }
+//
+//        $orderRequestData = $driver->orderRequestData ?? [];    // ARRAY -> firestore equivalent
+//        $inProgressOrders = $driver->inProgressOrderID ?? [];   // ARRAY -> firestore equivalent
+//
+//
+//        /** ---------------------------------------------------------
+//         *  CASE A : Current order not in request list AND not in progress
+//         * ---------------------------------------------------------*/
+//        if($currentOrderId != null &&
+//            !in_array($currentOrderId,$orderRequestData) &&
+//            !in_array($currentOrderId,$inProgressOrders)){
+//
+//            return response()->json([
+//                "success"=>false,
+//                "action"=>"clear_current_order",
+//                "message"=>"No current order → Clear map & stop sound"
+//            ]);
+//        }
+//
+//
+//        /** ---------------------------------------------------------
+//         *  CASE B : Single Order Receive Logic
+//         * ---------------------------------------------------------*/
+//        if($singleOrderReceive == true){
+//
+//            /* 1) Check In Progress Order */
+//            if(!empty($inProgressOrders)){
+//                $orderId = $inProgressOrders[0] ?? null;
+//
+//                $order = restaurant_orders::where('id',$orderId)
+//                    ->whereNotIn('status',['Order Cancelled','Driver Rejected','Order Completed'])
+//                    ->first();
+//
+//                if($order){
+//                    return response()->json([
+//                        "success"=>true,
+//                        "type"=>"inProgress",
+//                        "order"=>$order,
+//                        "message"=>"Fetched in-progress order"
+//                    ]);
+//                }
+//
+//                // IF NOT FOUND remove from list
+//                $driver->update(["inProgressOrderID"=>array_diff($inProgressOrders,[$orderId])]);
+//
+//                return response()->json([
+//                    "success"=>false,
+//                    "type"=>"orderFinishedOrNotFound",
+//                    "message"=>"Remove from driver.inProgressOrderID, clear map & sound"
+//                ]);
+//            }
+//
+//
+//            /* 2) Check orderRequestData */
+//            if(!empty($orderRequestData)){
+//                $orderId = $orderRequestData[0] ?? null;
+//
+//                $order = restaurant_orders::where('id',$orderId)
+//                    ->whereNotIn('status',['Order Cancelled','Driver Rejected'])
+//                    ->first();
+//
+//                if($order){
+//                    return response()->json([
+//                        "success"=>true,
+//                        "type"=>"orderRequest",
+//                        "order"=>$order
+//                    ]);
+//                }
+//
+//                // If no order → remove
+//                $driver->update(["orderRequestData"=>array_diff($orderRequestData,[$orderId])]);
+//
+//                return response()->json([
+//                    "success"=>false,
+//                    "type"=>"orderRemoved",
+//                    "message"=>"Order not found → removed from orderRequestData"
+//                ]);
+//            }
+//        }
+//
+//
+//        /** ---------------------------------------------------------
+//         * CASE C : If orderModel.id available
+//         * ---------------------------------------------------------*/
+//        if($argumentOrderId != null){
+//
+//            $order = restaurant_orders::where('id',$argumentOrderId)
+//                ->whereNotIn('status',['Order Cancelled','Driver Rejected'])
+//                ->first();
+//
+//            if($order){
+//                return response()->json([
+//                    "success"=>true,
+//                    "type"=>"orderByArgument",
+//                    "order"=>$order
+//                ]);
+//            }
+//
+//            return response()->json([
+//                "success"=>false,
+//                "type"=>"notFoundByArgument",
+//                "message"=>"Order not found → stop sound"
+//            ]);
+//        }
+//
+//
+//        return response()->json([
+//            "success"=>false,
+//            "message"=>"No conditions matched"
+//        ]);
+//    }
+
     public function getCurrentOrder(Request $request)
     {
-        $driverId = $request->driver_id;
+        $driverId           = $request->driver_id;
+        $currentOrderId     = $request->current_order_id;
+        $argumentOrderId    = $request->argument_order_id;
+        $singleOrderReceive = $request->single_order_receive; // bool
 
-        $driver = user::where('firebase_id', $driverId)->first();
+        /* ---------------------------------------------------
+           1️⃣ Driver Fetch
+        --------------------------------------------------- */
+        $driver = User::where('firebase_id', $driverId)->first();
         if (!$driver) {
-            return response()->json(["success" => false, "message" => "Driver not found"], 404);
+            return response()->json(["success" => false, "message" => "Driver not found"]);
         }
 
-        $inProgress   = json_decode($driver->inProgressOrderID ?? "[]");
-        $orderRequest = json_decode($driver->orderRequestData ?? "[]");
+        /* ---------------------------------------------------
+           Convert String/JSON → ARRAY (Important fix)
+        --------------------------------------------------- */
+        $orderRequestData = $driver->orderRequestData;
 
-        /** ───────────────────────────────
-         * CASE 1: Driver already has an order
-         * ───────────────────────────────*/
-        if (!empty($inProgress)) {
+        if (is_string($orderRequestData)) {
+            $orderRequestData = json_decode($orderRequestData, true) ?: explode(",", $orderRequestData);
+        }
+        if (!is_array($orderRequestData)) $orderRequestData = [];
 
-            $orderId = $inProgress[0];
+        $inProgressOrders = $driver->inProgressOrderID;
+        if (is_string($inProgressOrders)) {
+            $inProgressOrders = json_decode($inProgressOrders, true) ?: explode(",", $inProgressOrders);
+        }
+        if (!is_array($inProgressOrders)) $inProgressOrders = [];
 
-            $order = restaurant_orders::where('id', $orderId)
-                ->whereNotIn('status', ['orderCancelled', 'driverRejected', 'orderCompleted'])
+
+        /* ---------------------------------------------------
+           2️⃣ If currentOrderId NOT found anywhere → Clear & stop sound
+        --------------------------------------------------- */
+        if ($currentOrderId != null &&
+            !in_array($currentOrderId, $orderRequestData) &&
+            !in_array($currentOrderId, $inProgressOrders)) {
+
+            return response()->json([
+                "success" => false,
+                "action"  => "clear_and_stopSound"
+            ]);
+        }
+
+
+        /* ---------------------------------------------------
+           3️⃣ If Single Order Receive Mode
+        --------------------------------------------------- */
+        if ($singleOrderReceive == true) {
+
+            /* 🔥 PRIORITY 1 — In Progress Order */
+            if (!empty($inProgressOrders)) {
+
+                $firstOrderId = $inProgressOrders[0];
+
+                $order = restaurant_orders::where('id', $firstOrderId)
+                    ->whereNotIn('status', ['Order Cancelled', 'Driver Rejected', 'Order Completed'])
+                    ->first();
+
+                if ($order) {
+                    return response()->json([
+                        "success" => true,
+                        "action"  => "in_progress",
+                        "order"   => $order
+                    ]);
+                }
+
+                // order doesn't exist → remove
+                $driver->update([
+                    "inProgressOrderID" => array_values(array_diff($inProgressOrders, [$firstOrderId]))
+                ]);
+
+                return response()->json([
+                    "success" => false,
+                    "action"  => "remove_inProgress_and_clear"
+                ]);
+            }
+
+
+            /* 🔥 PRIORITY 2 — Order Request List */
+            if (!empty($orderRequestData)) {
+
+                $firstOrderId = $orderRequestData[0];
+
+                $order = restaurant_orders::where('id', $firstOrderId)
+                    ->whereNotIn('status', ['Order Cancelled', 'Driver Rejected'])
+                    ->first();
+
+                if ($order) {
+                    return response()->json([
+                        "success" => true,
+                        "action"  => "order_request",
+                        "order"   => $order
+                    ]);
+                }
+
+                // order invalid → remove from request
+                $driver->update([
+                    "orderRequestData" => array_values(array_diff($orderRequestData, [$firstOrderId]))
+                ]);
+
+                return response()->json([
+                    "success" => false,
+                    "action"  => "remove_request"
+                ]);
+            }
+        }
+
+
+        /* ---------------------------------------------------
+           4️⃣ If argument order passed from app
+        --------------------------------------------------- */
+        if ($argumentOrderId != null) {
+
+            $order = restaurant_orders::where('id', $argumentOrderId)
+                ->whereNotIn('status', ['Order Cancelled', 'Driver Rejected'])
                 ->first();
 
             if ($order) {
                 return response()->json([
                     "success" => true,
-                    "type" => "inProgress",
-                    "order" => $order
+                    "action"  => "order_by_argument",
+                    "order"   => $order
                 ]);
             }
 
-            /** Order finished → Remove from driver */
-            $inProgress = array_filter($inProgress, fn($id) => $id != $orderId);
-            $driver->inProgressOrderID = json_encode(array_values($inProgress));
-            $driver->save();
-
             return response()->json([
                 "success" => false,
-                "message" => "Order completed, removed from driver"
+                "action"  => "argument_not_found_stopSound"
             ]);
         }
 
-        /** ───────────────────────────────
-         * CASE 2: Requested Orders Pending
-         * ───────────────────────────────*/
-        if (!empty($orderRequest)) {
 
-            $orderId = $orderRequest[0];
-
-            $order = restaurant_orders::where('id', $orderId)
-                ->whereNotIn('status', ['orderCancelled','driverRejected'])
-                ->first();
-
-            if ($order) {
-                return response()->json([
-                    "success" => true,
-                    "type" => "request",
-                    "order" => $order
-                ]);
-            }
-
-            /** Remove old request if not found */
-            $orderRequest = array_filter($orderRequest, fn($id) => $id != $orderId);
-            $driver->orderRequestData = json_encode(array_values($orderRequest));
-            $driver->save();
-
-            return response()->json([
-                "success" => false,
-                "message" => "Order not found, removed request"
-            ]);
-        }
-
-        /** ───────────────────────────────
-         * CASE 3: No Current Orders
-         * ───────────────────────────────*/
-        return response()->json([
-            "success" => false,
-            "message" => "No orders available"
-        ]);
+        /* ---------------------------------------------------
+           DEFAULT
+        --------------------------------------------------- */
+        return response()->json(["success" => false, "action" => "nothing"]);
     }
-
 
 
     public function getDriver($id)
@@ -1348,6 +1529,312 @@ class DriverSqlBridgeController extends FirestoreUtilsController
 //            ], 500);
 //        }
 //    }
+
+
+    public function getZoneBonusByZoneId(Request $request)
+    {
+        $zoneId = $request->zone_id; // incoming from API
+
+        if (!$zoneId) {
+            return response()->json([
+                "success" => false,
+                "message" => "zone_id is required"
+            ], 400);
+        }
+
+        try {
+            $zoneBonus = zone_bonus_settings::where('zoneId', $zoneId)->first(); // LIMIT 1
+
+            if (!$zoneBonus) {
+                return response()->json([
+                    "success" => true,
+                    "data" => null, // same as Flutter returning null
+                    "message" => "No data found for this zone"
+                ]);
+            }
+
+            return response()->json([
+                "success" => true,
+                "data" => $zoneBonus
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                "success" => false,
+                "message" => "Error: ".$e->getMessage()
+            ], 500);
+        }
+    }
+
+
+
+    public function updateDriverOrder()
+    {
+        $startTimestamp = Carbon::now('UTC')->subHours(3);
+
+        // Step 1: fetch all relevant orders
+        $orders = Restaurant_Orders::whereIn('status', ['order Accepted', 'Order Rejected'])->get();
+
+        // Step 2: filter in PHP by comparing ISO string
+        $recentOrders = $orders->filter(function ($order) use ($startTimestamp) {
+            try {
+                $createdAt = Carbon::parse($order->createdAt);
+                return $createdAt->greaterThan($startTimestamp);
+            } catch (\Exception $e) {
+                return false;
+            }
+        });
+
+        if ($recentOrders->isEmpty()) {
+            return response()->json([
+                "message" => "No recent orders found"
+            ], 200);
+        }
+
+        // Step 3: decode JSON fields
+        $recentOrders = $recentOrders->map(function ($order) {
+            $order->products = isset($order->products) ? json_decode($order->products, true) : null;
+            $order->address = isset($order->address) ? json_decode($order->address, true) : null;
+            $order->author = isset($order->author) ? json_decode($order->author, true) : null;
+            $order->specialDiscount = isset($order->specialDiscount) ? json_decode($order->specialDiscount, true) : null;
+            return $order;
+        })->values(); // ✅ reindex the collection
+
+        // Step 4: update triggerDelivery
+        foreach ($recentOrders as $order) {
+            $order->triggerDelivery = Carbon::now('UTC')->toIso8601String();
+            $order->save();
+        }
+
+        return response()->json([
+            "message" => "Orders updated successfully",
+            "count" => $recentOrders->count(),
+            "orders" => $recentOrders
+        ]);
+    }
+
+
+
+
+    public function getOrders(Request $request)
+    {
+        // Accept driver_id from POST body or GET query
+        $driverId = $request->input('driver_id') ?? $request->input('driverId') ?? $request->query('driver_id') ?? $request->query('driverId');
+
+        if (!$driverId) {
+            return response()->json([
+                "success" => false,
+                "message" => "driver_id is required"
+            ], 400);
+        }
+
+        // Optional: Check if driver exists in users table
+        $driver = User::where('firebase_id', $driverId)->first();
+        if (!$driver) {
+            return response()->json([
+                "success" => false,
+                "message" => "Driver not found"
+            ], 404);
+        }
+
+        $activeStatuses = [
+            'driver Pending',
+            'driver Accepted',
+            'order Shipped',
+            'order In Transit',
+            'order Completed',
+            'order Cancelled'
+        ];
+
+        try {
+            $orders = Restaurant_Orders::where('driverID', $driverId)
+                ->whereIn('status', $activeStatuses)
+                ->orderBy('createdAt', 'desc')
+                ->get();
+
+            // Decode JSON fields
+            $orders = $orders->map(function ($order) {
+                $order->products = $order->products ? json_decode($order->products, true) : null;
+                $order->address = $order->address ? json_decode($order->address, true) : null;
+                $order->author = $order->author ? json_decode($order->author, true) : null;
+                $order->specialDiscount = $order->specialDiscount ? json_decode($order->specialDiscount, true) : null;
+                return $order;
+            })->values();
+
+            return response()->json([
+                "success" => true,
+                "orders" => $orders
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                "success" => false,
+                "message" => "Error fetching orders: " . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function getWalletTransaction(Request $request)
+    {
+        $userId = $request->user_id;
+        if (!$userId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'user_id is required'
+            ], 400);
+        }
+
+//        // 1. Wallet transactions
+//        $walletTransactions = WalletTransaction::where('user_id', $userId)
+//            ->orderBy('created_at', 'desc')
+//            ->get();
+//
+//        // 2. Withdrawal history
+//        $withdrawals = Withdrawal::where('user_id', $userId)
+//            ->orderBy('created_at', 'desc')
+//            ->get();
+//
+//        // 3. Orders
+        $now = Carbon::now();
+
+        // Daily orders
+        $dailyOrders = Restaurant_Orders::where('driverID', $userId)
+            ->whereDate('createdAt', $now->toDateString())
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        // Monthly orders
+        $monthlyOrders = Restaurant_Orders::where('driverID', $userId)
+            ->whereYear('createdAt', $now->year)
+            ->whereMonth('createdAt', $now->month)
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        // Yearly orders
+        $yearlyOrders = Restaurant_Orders::where('driverID', $userId)
+            ->whereYear('createdAt', $now->year)
+            ->orderBy('createdAt', 'desc')
+            ->get();
+
+        // 4. User profile
+// Instead of User::find($userId)
+        $user = User::where('firebase_id', $userId)->first();
+
+        return response()->json([
+            'success' => true,
+//            'wallet_transactions' => $walletTransactions,
+//            'withdrawals' => $withdrawals,
+            'daily_orders' => $dailyOrders,
+            'monthly_orders' => $monthlyOrders,
+            'yearly_orders' => $yearlyOrders,
+            'user' => $user
+        ]);
+    }
+
+
+    public function getWalletsTransaction(Request $request)
+    {
+        try {
+            // Trim to avoid hidden spaces or newlines
+            $driverId = trim($request->driver_id ?? '');
+
+            if (empty($driverId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'driver_id is required'
+                ], 400);
+            }
+
+            Log::info("Driver ID received: '$driverId'");
+
+            // Fetch user profile (case-insensitive search)
+            $user = User::whereRaw('LOWER(firebase_id) = ?', [strtolower($driverId)])->first();
+
+            if (!$user) {
+                Log::warning("Driver not found for firebase_id: '$driverId'");
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Driver not found'
+                ], 404);
+            }
+
+            $now = Carbon::now();
+
+            $dailyEarnings = DriverWalletTransaction::where('driverId', $driverId)
+                ->whereBetween('date', [$now->copy()->startOfDay(), $now->copy()->endOfDay()])
+                ->orderBy('date', 'desc')
+                ->get();
+
+            $monthlyEarnings = DriverWalletTransaction::where('driverId', $driverId)
+                ->whereBetween('date', [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()])
+                ->orderBy('date', 'desc')
+                ->get();
+
+            $yearlyEarnings = DriverWalletTransaction::where('driverId', $driverId)
+                ->whereBetween('date', [$now->copy()->startOfYear(), $now->copy()->endOfYear()])
+                ->orderBy('date', 'desc')
+                ->get();
+
+            $topTransactions = DriverWalletTransaction::where('driverId', $driverId)
+                ->orderBy('totalEarnings', 'desc')
+                ->limit(10)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'user' => $user,
+                'dailyEarnings' => $dailyEarnings,
+                'monthlyEarnings' => $monthlyEarnings,
+                'yearlyEarnings' => $yearlyEarnings,
+                'topTransactions' => $topTransactions,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("getWalletTransaction failed: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function getChats(Request $request)
+    {
+        try {
+            $restaurantId = $request->restaurant_id;
+
+            if (!$restaurantId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'restaurant_id is required'
+                ], 400);
+            }
+
+            // Fetch chat messages for this restaurant, latest first
+            $chats = ChatDriver::where('restaurantId', $restaurantId)
+                ->orderBy('createdAt', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'chats' => $chats
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("getChats failed: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+
 
 }
 

@@ -102,6 +102,7 @@ class DriverControllerLogin extends Controller
                 "active" => $autoApprove ? 1 : 0,
                 "isDocumentVerify" =>  0,
                 "zoneId" => $request->zone_id,
+                "createdAt" => now()->format('Y-m-d H:i:s'),
                 "provider" => "email",
                 "appIdentifier" => $request->app_identifier,
             ]);

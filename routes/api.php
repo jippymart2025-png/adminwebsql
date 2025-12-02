@@ -382,7 +382,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Get chat messages by order ID
     Route::get('/chat/{orderId}/messages', [ChatController::class, 'getMessages']);
     // Get single chat with messages
-    Route::get('/chat/{orderId}', [ChatController::class, 'getChat']);
+//    Route::post('/chat/{orderId}', [ChatController::class, 'getChat']);
     // Send message
     Route::post('/chat/{orderId}/send', [ChatController::class, 'sendMessage']);
     // Delete message
@@ -396,6 +396,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 ///NEW FILEDS
 Route::get('/unified-search', [SwiggySearchController::class, 'unifiedSearch']);
+Route::post('/chat/{orderId}', [ChatController::class, 'getChat']);
 
 
 Route::post('/mobile/orders/place-basic', [OrderSupportController::class, 'placeOrder']);
@@ -632,4 +633,22 @@ Route::get('/orders/completed/today/{driverId}', [DriverSqlBridgeController::cla
 
 // routes/api.php
 Route::post('/order/complete/{orderId}', [DriverSqlBridgeController::class, 'completeOrder']);
+
+Route::post('/zone/bonus/byZoneId', [DriverSqlBridgeController::class, 'getZoneBonusByZoneId']);
+
+Route::get('/update-driver-order', [DriverSqlBridgeController::class, 'updateDriverOrder']);
+
+Route::post('/driver/orders', [DriverSqlBridgeController::class, 'getOrders']);
+
+Route::get('/wallet/transactions', [DriverSqlBridgeController::class, 'getWalletTransaction']);
+
+Route::post('/driver/wallet-transactions', [DriverSqlBridgeController::class, 'getWalletsTransaction']);
+
+Route::get('/get-chats', [DriverSqlBridgeController::class, 'getChats']);
+
+
+
+
+
+
 

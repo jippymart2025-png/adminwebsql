@@ -11,6 +11,7 @@ class restaurant_orders extends Model
 {
     use HasFactory;
     public $timestamps = false;
+    public $incrementing = false; // very important for non-auto-incrementing IDs
     protected $table = 'restaurant_orders';
     protected $guarded = [];
 
