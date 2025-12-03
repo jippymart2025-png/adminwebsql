@@ -343,30 +343,21 @@ class UserProfileController extends Controller
             return [];
         }
 
-        // If it's a string, decode it
+        // Decode JSON string if needed
         if (is_string($shippingAddress)) {
-            try {
-                $decoded = json_decode($shippingAddress, true);
-                if (is_array($decoded)) {
-                    $shippingAddress = $decoded;
-                } else {
-                    return [];
-                }
-            } catch (\Exception $e) {
-                Log::error('Error parsing shipping address: ' . $e->getMessage());
+            $decoded = json_decode($shippingAddress, true);
+            if (is_array($decoded)) {
+                $shippingAddress = $decoded;
+            } else {
                 return [];
             }
         }
 
-        // If it's not an array at this point, return empty
         if (!is_array($shippingAddress)) {
             return [];
         }
 
-        // Ensure it's a list of addresses
-        $addresses = [];
-
-        // If it's a single address (associative array), wrap it
+        // Wrap single address into array
         if (isset($shippingAddress['address']) || isset($shippingAddress['locality'])) {
             $addresses = [$shippingAddress];
         } else {
@@ -378,6 +369,7 @@ class UserProfileController extends Controller
             if (!is_array($addr)) {
                 return null;
             }
+
             return [
                 'id' => $addr['id'] ?? null,
                 'address' => $addr['address'] ?? '',
@@ -386,47 +378,34 @@ class UserProfileController extends Controller
                 'locality' => $addr['locality'] ?? '',
                 'latitude' => $addr['latitude'] ?? '',
                 'longitude' => $addr['longitude'] ?? '',
-                'location' =>  [
-                 'latitude' => $addr['latitude'] ?? '',
-                'longitude' => $addr['longitude'] ?? '',
-                ],
-                // 'location' => isset($addr['location']) ? [
-                //     'latitude' => (float) ($addr['location']['latitude'] ?? 0),
-                //     'longitude' => (float) ($addr['location']['longitude'] ?? 0),
-                // ] : null,
+                // Use parseLocation() to return location AS-IS
+                'location' => isset($addr['location']) ? $this->parseLocation($addr['location']) : null,
                 'isDefault' => (bool) ($addr['isDefault'] ?? false),
                 'zoneId' => $addr['zoneId'] ?? null,
             ];
         }, array_filter($addresses));
     }
 
+
     /**
      * Parse location from JSON
      */
     private function parseLocation($location)
     {
-        if (empty($location)) {
-            return null;
-        }
-
-        // If it's a string, decode it
+        // If it's a JSON string, decode it
         if (is_string($location)) {
-            try {
-                $location = json_decode($location, true);
-            } catch (\Exception $e) {
-                return null;
-            }
+            $location = json_decode($location, true);
         }
 
+        // If not array, return as-is
         if (!is_array($location)) {
-            return null;
+            return $location;
         }
 
-        return [
-            'latitude' => (float) ($location['latitude'] ?? 0),
-            'longitude' => (float) ($location['longitude'] ?? 0),
-        ];
+        // Return EXACTLY as stored (no float conversion)
+        return $location;
     }
+
 
     /**
      * Parse bank details from JSON
