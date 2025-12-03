@@ -1,14 +1,21 @@
-<IfModule mod_headers.c>
-    Header set Cache-Control "no-cache, private"
-    #Header set Pragma "no-cache"
-    #Header set Expires 0
+# Disable LiteSpeed WAF for API endpoints
+<IfModule LiteSpeed>
+    php_value modsecurity.enabled Off
 </IfModule>
+
+<IfModule mod_security.c>
+    SecRuleEngine Off
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>
 
     RewriteEngine On
+    
+    # Disable LiteSpeed WAF
+    SetEnvIf Request_URI ".*" MODSEC_ENABLE=Off
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

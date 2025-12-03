@@ -170,6 +170,19 @@ Route::middleware('auth:sanctum')->group(function () {
 //Route::get('/menu-items/banners', [MenuItemBannerController::class, 'index']);
 Route::get('/menu-items/banners/{id}', [MenuItemBannerController::class, 'show']);
 
+// Test route for debugging (REMOVE AFTER FIXING)
+Route::get('/test-server', function () {
+    return response()->json([
+        'status' => 'SUCCESS - Laravel is working on HTTPS!',
+        'timestamp' => now()->toDateTimeString(),
+        'request' => [
+            'is_https' => request()->secure(),
+            'scheme' => request()->getScheme(),
+            'host' => request()->getHost(),
+        ],
+    ]);
+});
+
 // Stories API routes (Public - no auth required)
     Route::get('/stories', [StoryController::class, 'index']);
 

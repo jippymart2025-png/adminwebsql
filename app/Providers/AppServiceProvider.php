@@ -39,6 +39,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // Force HTTPS detection when behind a proxy/load balancer
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            $this->app['request']->server->set('HTTPS', 'on');
+            \URL::forceScheme('https');
+        }
+
         // Load environment-specific impersonation config
         $environment = app()->environment();
         $configFile = "impersonation.{$environment}";
