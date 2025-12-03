@@ -2356,5 +2356,6 @@ foreach ($countries as $keycountry => $valuecountry) {
         $('#dine_in_div').removeClass('d-none');
     });
 
+
 </script>
 @endsection
