@@ -1559,6 +1559,7 @@ Route::prefix('cache-test')->group(function () {
 
 });
 
+
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
 Route::any('/dashboard/clear-cache', [DashboardController::class, 'clearCache']);
