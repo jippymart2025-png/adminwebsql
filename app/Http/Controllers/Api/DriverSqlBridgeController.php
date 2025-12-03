@@ -1267,6 +1267,77 @@ class DriverSqlBridgeController extends FirestoreUtilsController
 //            "message"=>"No conditions matched"
 //        ]);
 //    }
+public function getOrderCancelRejectCompleated(Request $request)
+{
+    $orderId = $request->query('order_id'); // GET parameter
+    $excludeStatuses = $request->query('exclude_statuses'); // comma separated statuses
+
+    if (!$orderId) {
+        return response()->json([
+            "success" => false,
+            "message" => "order_id is required"
+        ]);
+    }
+
+    // Convert comma separated string to array
+    $excludeStatuses = $excludeStatuses ? explode(',', $excludeStatuses) : [];
+
+    // Fetch order with vendor relation
+    $order = restaurant_orders::where('id', $orderId)
+        ->when(!empty($excludeStatuses), function ($query) use ($excludeStatuses) {
+            $query->whereNotIn('status', $excludeStatuses);
+        })
+        ->first();
+
+    if (!$order) {
+        return response()->json([
+            "success" => false,
+            "message" => "Order not found or completed/cancelled/rejected"
+        ]);
+    }
+
+    // Convert order to array
+    $orderData = $order->toArray();
+
+    // Fields that may contain JSON strings
+    $jsonFields = ['specialDiscount', 'products', 'address', 'author', 'vendor'];
+
+    // Recursive JSON decode helper
+    $recursiveDecode = function (&$data) use (&$recursiveDecode) {
+        if (is_array($data)) {
+            foreach ($data as &$value) {
+                $recursiveDecode($value);
+            }
+        } elseif (is_string($data)) {
+            $decoded = json_decode($data, true);
+            if ($decoded !== null) {
+                $data = $decoded;
+                $recursiveDecode($data); // decode nested JSON
+            }
+        }
+    };
+
+    // Decode only required fields
+    foreach ($jsonFields as $field) {
+        if (isset($orderData[$field]) && !empty($orderData[$field])) {
+            $recursiveDecode($orderData[$field]);
+        }
+    }
+
+    // Ensure vendorID is just ID string
+    if (isset($orderData['vendor']['id'])) {
+        $orderData['vendorID'] = $orderData['vendor']['id'];
+    } else {
+        $orderData['vendorID'] = $orderData['vendorID']; // fallback if already correct
+    }
+
+    return response()->json([
+        "success" => true,
+        "order" => $orderData
+    ]);
+}
+
+
 
     public function getCurrentOrder(Request $request)
     {
