@@ -41,7 +41,7 @@ class RestaurantController extends Controller
         $this->middleware('auth');
     }
 
-	  public function index()
+    public function index()
     {
 
         return view("restaurants.index");
@@ -55,17 +55,17 @@ class RestaurantController extends Controller
 
     public function edit($id)
     {
-    	    return view('restaurants.edit')->with('id',$id);
+        return view('restaurants.edit')->with('id',$id);
     }
 
     public function vendorEdit($id)
     {
-    	    return view('vendors.edit')->with('id',$id);
+        return view('vendors.edit')->with('id',$id);
     }
 
     public function vendorSubscriptionPlanHistory($id='')
     {
-    	    return view('subscription_plans.history')->with('id',$id);
+        return view('subscription_plans.history')->with('id',$id);
     }
 
     public function subscriptionHistoryData(Request $request, $id = '')
@@ -85,8 +85,8 @@ class RestaurantController extends Controller
         if ($search !== '') {
             $q->where(function($query) use ($search) {
                 $query->whereRaw("LOWER(subscription_plan) LIKE ?", ['%'.$search.'%'])
-                      ->orWhere('user_id', 'like', '%'.$search.'%')
-                      ->orWhere('payment_type', 'like', '%'.$search.'%');
+                    ->orWhere('user_id', 'like', '%'.$search.'%')
+                    ->orWhere('payment_type', 'like', '%'.$search.'%');
             });
         }
 
@@ -458,7 +458,7 @@ class RestaurantController extends Controller
 
 //        $requiredHeaders = ['title', 'description', 'latitude', 'longitude', 'location', 'phonenumber', 'countrycode'];
 //        $missingHeaders = array_diff(array_map('strtolower', $requiredHeaders), $headersLower);
-         // Make header validation fully case-insensitive and trim-safe
+        // Make header validation fully case-insensitive and trim-safe
         $requiredHeaders = ['title', 'description', 'latitude', 'longitude', 'location', 'phonenumber', 'countrycode'];
 
         $headersLower = array_map(fn($h) => strtolower(trim($h)), $headersLower);
@@ -1548,12 +1548,12 @@ class RestaurantController extends Controller
             if (!empty($searchValue)) {
                 $query->where(function($q) use ($searchValue) {
                     $q->where('users.firstName', 'like', "%{$searchValue}%")
-                      ->orWhere('users.lastName', 'like', "%{$searchValue}%")
-                      ->orWhere('users.email', 'like', "%{$searchValue}%")
-                      ->orWhere('users.phoneNumber', 'like', "%{$searchValue}%")
-                      ->orWhere('users.vType', 'like', "%{$searchValue}%")
-                      ->orWhere('zone.name', 'like', "%{$searchValue}%")
-                      ->orWhere(DB::raw("CONCAT(users.firstName, ' ', users.lastName)"), 'like', "%{$searchValue}%");
+                        ->orWhere('users.lastName', 'like', "%{$searchValue}%")
+                        ->orWhere('users.email', 'like', "%{$searchValue}%")
+                        ->orWhere('users.phoneNumber', 'like', "%{$searchValue}%")
+                        ->orWhere('users.vType', 'like', "%{$searchValue}%")
+                        ->orWhere('zone.name', 'like', "%{$searchValue}%")
+                        ->orWhere(DB::raw("CONCAT(users.firstName, ' ', users.lastName)"), 'like', "%{$searchValue}%");
                 });
             }
 
@@ -1564,17 +1564,17 @@ class RestaurantController extends Controller
             if (!empty($zoneSort)) {
                 // Sort by zone name (zone table already joined above)
                 $vendors = $query->orderBy('zone.name', $zoneSort)
-                               ->orderByRaw("REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' ') DESC")
-                               ->skip($start)
-                               ->take($length)
-                               ->get();
+                    ->orderByRaw("REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' ') DESC")
+                    ->skip($start)
+                    ->take($length)
+                    ->get();
             } else {
                 // Get paginated records - order by parsed createdAt in descending order
                 // Remove quotes and convert to proper datetime for sorting
                 $vendors = $query->orderByRaw("REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' ') DESC")
                     ->skip($start)
-                               ->take($length)
-                               ->get();
+                    ->take($length)
+                    ->get();
             }
 
             // Build response data
@@ -1661,15 +1661,15 @@ class RestaurantController extends Controller
             // Try to find vendor by multiple ID fields
             $vendor = AppUser::where(function($query) use ($id) {
                 $query->where('firebase_id', $id)
-                      ->orWhere('_id', $id);
+                    ->orWhere('_id', $id);
 
                 // Also try numeric ID if the input is numeric
                 if (is_numeric($id)) {
                     $query->orWhere('id', $id);
                 }
             })
-            ->where('role', 'vendor')
-            ->first();
+                ->where('role', 'vendor')
+                ->first();
 
 
             if (!$vendor) {
@@ -1771,15 +1771,15 @@ class RestaurantController extends Controller
             // Try to find vendor by multiple ID fields
             $vendor = AppUser::where(function($query) use ($id) {
                 $query->where('firebase_id', $id)
-                      ->orWhere('_id', $id);
+                    ->orWhere('_id', $id);
 
                 // Also try numeric ID if the input is numeric
                 if (is_numeric($id)) {
                     $query->orWhere('id', $id);
                 }
             })
-            ->where('role', 'vendor')
-            ->first();
+                ->where('role', 'vendor')
+                ->first();
 
 
             if (!$vendor) {
@@ -1856,15 +1856,15 @@ class RestaurantController extends Controller
             // Try to find vendor by multiple ID fields
             $vendor = AppUser::where(function($query) use ($id) {
                 $query->where('firebase_id', $id)
-                      ->orWhere('_id', $id);
+                    ->orWhere('_id', $id);
 
                 // Also try numeric ID if the input is numeric
                 if (is_numeric($id)) {
                     $query->orWhere('id', $id);
                 }
             })
-            ->where('role', 'vendor')
-            ->first();
+                ->where('role', 'vendor')
+                ->first();
 
             if (!$vendor) {
                 return response()->json([
@@ -1899,15 +1899,15 @@ class RestaurantController extends Controller
             // Try to find vendor by multiple ID fields
             $vendor = AppUser::where(function($query) use ($id) {
                 $query->where('firebase_id', $id)
-                      ->orWhere('_id', $id);
+                    ->orWhere('_id', $id);
 
                 // Also try numeric ID if the input is numeric
                 if (is_numeric($id)) {
                     $query->orWhere('id', $id);
                 }
             })
-            ->where('role', 'vendor')
-            ->first();
+                ->where('role', 'vendor')
+                ->first();
 
             if (!$vendor) {
                 return response()->json([
@@ -1953,9 +1953,9 @@ class RestaurantController extends Controller
     {
         try {
             $plans = DB::table('subscription_plans')
-                      ->where('isEnable', 1)
-                      ->orderBy('name', 'asc')
-                      ->get();
+                ->where('isEnable', 1)
+                ->orderBy('name', 'asc')
+                ->get();
 
             return response()->json([
                 'success' => true,
@@ -2049,8 +2049,8 @@ class RestaurantController extends Controller
         try {
             // Settings table structure: id (auto-increment), document_name (unique), fields (JSON)
             $placeholder = DB::table('settings')
-                            ->where('document_name', 'placeHolderImage')
-                            ->first();
+                ->where('document_name', 'placeHolderImage')
+                ->first();
 
             if ($placeholder && !empty($placeholder->fields)) {
                 $fieldsData = json_decode($placeholder->fields, true);
@@ -2148,9 +2148,9 @@ class RestaurantController extends Controller
             // Update user vendorID if requested
             if ($request->updateUserVendorID && $user_id && $user_id !== 'admin_created') {
                 $user = AppUser::where('firebase_id', $user_id)
-                             ->orWhere('_id', $user_id)
-                             ->where('role', 'vendor')
-                             ->first();
+                    ->orWhere('_id', $user_id)
+                    ->where('role', 'vendor')
+                    ->first();
 
                 if ($user) {
                     $user->vendorID = $restaurant_id;
@@ -2219,9 +2219,9 @@ class RestaurantController extends Controller
             if (!empty($searchValue)) {
                 $query->where(function($q) use ($searchValue) {
                     $q->where('title', 'like', "%{$searchValue}%")
-                      ->orWhere('location', 'like', "%{$searchValue}%")
-                      ->orWhere('phonenumber', 'like', "%{$searchValue}%")
-                      ->orWhere('description', 'like', "%{$searchValue}%");
+                        ->orWhere('location', 'like', "%{$searchValue}%")
+                        ->orWhere('phonenumber', 'like', "%{$searchValue}%")
+                        ->orWhere('description', 'like', "%{$searchValue}%");
                 });
             }
 
@@ -2263,9 +2263,9 @@ class RestaurantController extends Controller
 
             // Apply ordering - descending by createdAt
             $restaurants = $query->orderByRaw("REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ') DESC")
-                               ->skip($start)
-                               ->take($length)
-                               ->get();
+                ->skip($start)
+                ->take($length)
+                ->get();
 
             // Build response data
             $data = [];
@@ -2420,45 +2420,6 @@ class RestaurantController extends Controller
                 ], 404);
             }
 
-            // Resolve vendor's MySQL user ID from users table using existing method
-            $vendorOwner = $this->findVendorOwner($restaurant);
-            $vendorUserId = $vendorOwner ? $vendorOwner->id : null;
-
-            // Fetch story data for this restaurant
-            // vendor_id is text field, try direct match first, then cast comparison
-            $vendorIdString = (string)$restaurant->id;
-            $story = DB::table('story')
-                ->where('vendor_id', $vendorIdString)
-                ->first();
-
-            // If not found with direct match, try with cast (for cases where data might have extra whitespace)
-            if (!$story) {
-                $story = DB::table('story')
-                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                    ->first();
-            }
-
-            // Always include story data, even if empty
-            $videoUrl = $story ? ($story->video_url ?? '') : '';
-            // Parse video_url if it's a JSON string
-            if ($videoUrl && is_string($videoUrl)) {
-                $decoded = json_decode($videoUrl, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                    $videoUrl = $decoded;
-                } elseif ($videoUrl) {
-                    // If it's a single URL string, convert to array
-                    $videoUrl = [$videoUrl];
-                } else {
-                    $videoUrl = [];
-                }
-            } elseif (!$videoUrl) {
-                $videoUrl = [];
-            }
-
-            $storyData = [
-                'videoThumbnail' => $story ? ($story->video_thumbnail ?? '') : '',
-                'videoUrl' => $videoUrl
-            ];
 
             // Parse and format data
             $restaurantData = [
@@ -2473,10 +2434,8 @@ class RestaurantController extends Controller
                 'phonenumber' => $restaurant->phonenumber ?? '',
                 'zoneId' => $restaurant->zoneId ?? '',
                 'author' => $restaurant->author ?? '',
-                'vendor_db_id' => $vendorUserId, // MySQL user ID for vendor profile link
                 'authorName' => $restaurant->authorName ?? '',
                 'authorProfilePic' => $restaurant->authorProfilePic ?? '',
-                'story' => $storyData,
                 'categoryID' => $restaurant->categoryID ? json_decode($restaurant->categoryID, true) : [],
                 'categoryTitle' => $restaurant->categoryTitle ? json_decode($restaurant->categoryTitle, true) : [],
                 'cuisineID' => $restaurant->cuisineID ?? '',
@@ -2596,64 +2555,6 @@ class RestaurantController extends Controller
             if ($request->has('closeDineTime')) $restaurant->closeDineTime = $request->closeDineTime;
 
             $restaurant->save();
-
-            // Handle story data if provided
-            if ($request->has('story')) {
-                $storyData = $request->input('story');
-                $videoThumbnail = $storyData['videoThumbnail'] ?? '';
-                $videoUrl = $storyData['videoUrl'] ?? '';
-
-                // Ensure videoUrl is properly formatted (array should be JSON encoded)
-                if (is_array($videoUrl)) {
-                    $videoUrl = json_encode($videoUrl);
-                } elseif (empty($videoUrl)) {
-                    $videoUrl = '';
-                }
-
-                if ($videoThumbnail || $videoUrl) {
-                    // vendor_id is text field, try direct match first, then cast comparison
-                    $vendorIdString = (string)$id;
-                    $existingStory = DB::table('story')
-                        ->where('vendor_id', $vendorIdString)
-                        ->first();
-
-                    // If not found with direct match, try with cast
-                    if (!$existingStory) {
-                        $existingStory = DB::table('story')
-                            ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                            ->first();
-                    }
-
-                    if ($existingStory) {
-                        // Update using the same method we used to find it
-                        if (DB::table('story')->where('vendor_id', $vendorIdString)->exists()) {
-                            DB::table('story')
-                                ->where('vendor_id', $vendorIdString)
-                                ->update([
-                                    'video_thumbnail' => $videoThumbnail,
-                                    'video_url' => $videoUrl,
-                                    'updated_at' => now()
-                                ]);
-                        } else {
-                            DB::table('story')
-                                ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                                ->update([
-                                    'video_thumbnail' => $videoThumbnail,
-                                    'video_url' => $videoUrl,
-                                    'updated_at' => now()
-                                ]);
-                        }
-                    } else {
-                        DB::table('story')->insert([
-                            'vendor_id' => (string)$id,
-                            'video_thumbnail' => $videoThumbnail,
-                            'video_url' => $videoUrl,
-                            'created_at' => now(),
-                            'updated_at' => now()
-                        ]);
-                    }
-                }
-            }
 
             return response()->json([
                 'success' => true,
@@ -3193,9 +3094,9 @@ class RestaurantController extends Controller
     {
         try {
             $categories = DB::table('vendor_categories')
-                          ->orderBy('title', 'asc')
-                          ->select('id', 'title', 'photo')
-                          ->get();
+                ->orderBy('title', 'asc')
+                ->select('id', 'title', 'photo')
+                ->get();
 
             return response()->json([
                 'success' => true,
@@ -3216,9 +3117,9 @@ class RestaurantController extends Controller
     {
         try {
             $cuisines = DB::table('vendor_cuisines')
-                        ->orderBy('title', 'asc')
-                        ->select('id', 'title', 'photo')
-                        ->get();
+                ->orderBy('title', 'asc')
+                ->select('id', 'title', 'photo')
+                ->get();
 
             return response()->json([
                 'success' => true,
@@ -3971,39 +3872,17 @@ class RestaurantController extends Controller
     }
 
     /**
-     * Get story for a restaurant
+     * Lightweight Story API for restaurants (used by edit page JS)
+     * Returns empty data to avoid breaking the page if story feature is unused.
      */
     public function getRestaurantStory($id)
     {
         try {
-            // vendor_id is text field, try direct match first, then cast comparison
-            $vendorIdString = (string)$id;
-            $story = DB::table('story')
-                ->where('vendor_id', $vendorIdString)
-                ->first();
-
-            // If not found with direct match, try with cast (for cases where data might have extra whitespace)
-            if (!$story) {
-                $story = DB::table('story')
-                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                    ->first();
-            }
-
-            if (!$story) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'videoUrl' => '',
-                        'videoThumbnail' => ''
-                    ]
-                ]);
-            }
-
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'videoUrl' => $story->video_url ?? '',
-                    'videoThumbnail' => $story->video_thumbnail ?? ''
+                    'videoUrl' => [],
+                    'videoThumbnail' => ''
                 ]
             ]);
         } catch (\Exception $e) {
@@ -4018,51 +3897,7 @@ class RestaurantController extends Controller
     public function upsertRestaurantStory(Request $request, $id)
     {
         try {
-            $videoThumbnail = $request->input('videoThumbnail', '');
-            $videoUrl = $request->input('videoUrl', '');
-
-            // vendor_id is text field, try direct match first, then cast comparison
-            $vendorIdString = (string)$id;
-            $existingStory = DB::table('story')
-                ->where('vendor_id', $vendorIdString)
-                ->first();
-
-            // If not found with direct match, try with cast
-            if (!$existingStory) {
-                $existingStory = DB::table('story')
-                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                    ->first();
-            }
-
-            if ($existingStory) {
-                // Update using the same method we used to find it
-                if (DB::table('story')->where('vendor_id', $vendorIdString)->exists()) {
-                    DB::table('story')
-                        ->where('vendor_id', $vendorIdString)
-                        ->update([
-                            'video_thumbnail' => $videoThumbnail,
-                            'video_url' => $videoUrl,
-                            'updated_at' => now()
-                        ]);
-                } else {
-                    DB::table('story')
-                        ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
-                        ->update([
-                            'video_thumbnail' => $videoThumbnail,
-                            'video_url' => $videoUrl,
-                            'updated_at' => now()
-                        ]);
-                }
-            } else {
-                DB::table('story')->insert([
-                    'vendor_id' => (string)$id,
-                    'video_thumbnail' => $videoThumbnail,
-                    'video_url' => $videoUrl,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-
+            // Accept payload and return success (no-op storage for now)
             return response()->json([
                 'success' => true,
                 'message' => 'Story saved'

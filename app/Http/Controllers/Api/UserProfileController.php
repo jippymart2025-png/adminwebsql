@@ -61,7 +61,6 @@ class UserProfileController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Get User Profile Error: ' . $e->getMessage(), [
-                'uuid' => $uuid,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);

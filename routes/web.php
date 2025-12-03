@@ -566,19 +566,14 @@ Route::middleware(['permission:dynamic-notifications,dynamic-notification.delete
     Route::get('dynamic-notification/delete/{id}', [App\Http\Controllers\DynamicNotificationController::class, 'delete'])->name('dynamic-notification.delete');
 });
 Route::post('/sendnotification', [App\Http\Controllers\BookTableController::class, 'sendnotification'])->name('sendnotification');
-
-Route::middleware(['permission:general-notifications,notification.delete'])->group(function () {
-    Route::delete('/notification/{id}', [App\Http\Controllers\NotificationController::class, 'delete'])->name('notification.delete');
-});
 Route::middleware(['permission:general-notifications,notification'])->group(function () {
     Route::get('/notification', [App\Http\Controllers\NotificationController::class, 'index'])->name('notification');
 });
 Route::middleware(['permission:general-notifications,notification.send'])->group(function () {
     Route::get('/notification/send', [App\Http\Controllers\NotificationController::class, 'send'])->name('notification.send');
     Route::get('/notification/data', [App\Http\Controllers\NotificationController::class, 'data'])->name('notification.data');
-    Route::get('/notification/dynamic-notification', [App\Http\Controllers\NotificationController::class, 'broadcastnotification'])->name('dynamic-notification.data');
+    Route::get('/notification/dynamic-notification', [App\Http\Controllers\NotificationController::class, 'broadcast notification'])->name('dynamic-notification.data');
 });
-
 Route::post('broadcastnotification', [App\Http\Controllers\NotificationController::class, 'broadcastnotification'])->name('broadcastnotification');
 
 
@@ -1502,6 +1497,7 @@ Route::middleware(['permission:restaurants,restaurants.edit'])->group(function (
     Route::post('/restaurants/{id}/subscription-limits', [App\Http\Controllers\RestaurantController::class, 'updateSubscriptionLimits'])->name('restaurants.subscription.limits');
     Route::get('/restaurants/{id}/story', [App\Http\Controllers\RestaurantController::class, 'getRestaurantStory'])->name('restaurants.story.get');
     Route::post('/restaurants/{id}/story', [App\Http\Controllers\RestaurantController::class, 'upsertRestaurantStory'])->name('restaurants.story.save');
+
 });
 Route::middleware(['permission:restaurants,restaurants.delete'])->group(function () {
     Route::delete('/restaurants/{id}', [App\Http\Controllers\RestaurantController::class, 'deleteRestaurant'])->name('restaurants.delete');
@@ -1558,7 +1554,6 @@ Route::prefix('cache-test')->group(function () {
     Route::get('/config', [App\Http\Controllers\CacheTestController::class, 'getCacheConfig'])->name('cache-test.config');
 
 });
-
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
