@@ -557,6 +557,10 @@ Route::middleware(['permission:dynamic-notifications,dynamic-notification.index'
 });
 Route::middleware(['permission:dynamic-notifications,dynamic-notification.save'])->group(function () {
     Route::get('dynamic-notification/save/{id?}', [App\Http\Controllers\DynamicNotificationController::class, 'save'])->name('dynamic-notification.save');
+    Route::post('dynamic-notification/upsert', [App\Http\Controllers\DynamicNotificationController::class, 'upsert'])->name('dynamic-notification.upsert');
+    Route::get('dynamic-notification/data', [App\Http\Controllers\DynamicNotificationController::class, 'data'])->name('dynamic-notification.data');
+    Route::get('api/dynamic-notification/{id}', [App\Http\Controllers\DynamicNotificationController::class, 'show'])->name('dynamic-notification.show');
+    Route::post('dynamic-notification/send/{id}', [App\Http\Controllers\DynamicNotificationController::class, 'sendToCustomers'])->name('dynamic-notification.send');
 });
 Route::middleware(['permission:dynamic-notifications,dynamic-notification.delete'])->group(function () {
     Route::get('dynamic-notification/delete/{id}', [App\Http\Controllers\DynamicNotificationController::class, 'delete'])->name('dynamic-notification.delete');

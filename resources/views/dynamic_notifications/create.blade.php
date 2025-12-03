@@ -55,6 +55,11 @@
             <button type="button" class="btn btn-primary edit-setting-btn send_message"><i class="fa fa-save"></i> {{
                 trans('lang.save')}}
             </button>
+            @if($id)
+            <button type="button" class="btn btn-success send-to-customers-btn" data-id="{{$id}}">
+                <i class="fa fa-paper-plane"></i> Send to All Customers
+            </button>
+            @endif
             <a href="{{url('/dynamic-notification')}}" class="btn btn-default"><i class="fa fa-undo"></i>{{
                 trans('lang.cancel')}}</a>
         </div>
@@ -142,12 +147,61 @@
                     jQuery("#data-table_processing").hide();
                     $(".success_top").show().html("<p>{{trans('lang.notification_created_success')}}</p>");
                     window.scrollTo(0, 0);
-                    window.location.href = '{{ route("dynamic-notification.index")}}';
+                    if (resp.id && !id) {
+                        // If new notification was created, redirect to edit page with send button
+                        window.location.href = '{{ url("dynamic-notification/save") }}/' + resp.id;
+                    } else {
+                        window.location.href = '{{ route("dynamic-notification.index")}}';
+                    }
                 }).fail(function(xhr){
                     jQuery("#data-table_processing").hide();
                     $(".error_top").show().html("<p>" + (xhr.responseJSON?.message || 'Error') + "</p>");
                 });
             }
+        });
+
+        // Send notification to all customers
+        $(document).on('click', '.send-to-customers-btn', function() {
+            var notificationId = $(this).data('id');
+            var subject = $("#subject").val();
+            var message = $("#message").val();
+
+            if (!subject || !message) {
+                alert('Please save the notification first before sending');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to send this notification to all active customers? This action cannot be undone.')) {
+                return;
+            }
+
+            jQuery("#data-table_processing").show();
+            $(".success_top").hide();
+            $(".error_top").hide();
+
+            $.ajax({
+                url: '{{ url("dynamic-notification/send") }}/' + notificationId,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                timeout: 120000 // 2 minutes timeout for bulk sending
+            }).done(function(resp){
+                jQuery("#data-table_processing").hide();
+                if (resp.success) {
+                    $(".success_top").show().html(
+                        "<p>✅ " + resp.message + "</p>" +
+                        "<p>Total: " + resp.stats.total_customers + " | Success: " + resp.stats.success + " | Failed: " + resp.stats.failed + "</p>"
+                    );
+                    window.scrollTo(0, 0);
+                } else {
+                    $(".error_top").show().html("<p>❌ " + resp.message + "</p>");
+                    window.scrollTo(0, 0);
+                }
+            }).fail(function(xhr){
+                jQuery("#data-table_processing").hide();
+                var errorMsg = xhr.responseJSON?.message || 'Failed to send notifications';
+                $(".error_top").show().html("<p>❌ " + errorMsg + "</p>");
+                window.scrollTo(0, 0);
+            });
         });
     </script>
     @endsection

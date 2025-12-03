@@ -232,5 +232,40 @@
         .done(function(){ window.location.reload(); })
         .fail(function(){ alert('Delete failed'); });
     });
+
+    // Send notification to all customers
+    $(document).on('click', '.send-notification-btn', function(e) {
+        e.preventDefault();
+        var notificationId = $(this).data('id');
+        var subject = $(this).data('subject');
+        var message = $(this).data('message');
+
+        if (!confirm('Send "' + subject + '" to all active customers?\n\nThis will send push notifications to all customers with FCM tokens. This action cannot be undone.')) {
+            return;
+        }
+
+        jQuery("#data-table_processing").show();
+
+        $.ajax({
+            url: '{{ url("dynamic-notification/send") }}/' + notificationId,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            timeout: 120000 // 2 minutes timeout for bulk sending
+        }).done(function(resp){
+            jQuery("#data-table_processing").hide();
+            if (resp.success) {
+                alert('✅ ' + resp.message + '\n\n' +
+                      'Total: ' + resp.stats.total_customers + '\n' +
+                      'Success: ' + resp.stats.success + '\n' +
+                      'Failed: ' + resp.stats.failed);
+            } else {
+                alert('❌ ' + resp.message);
+            }
+        }).fail(function(xhr){
+            jQuery("#data-table_processing").hide();
+            var errorMsg = xhr.responseJSON?.message || 'Failed to send notifications';
+            alert('❌ ' + errorMsg);
+        });
+    });
 </script>
 @endsection

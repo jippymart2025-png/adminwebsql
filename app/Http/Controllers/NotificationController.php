@@ -102,11 +102,11 @@ class NotificationController extends Controller
             'message' => $request->message
         ]);
 
-        if(Storage::disk('local')->has('firebase/serviceAccount.json')){
+        if(Storage::disk('local')->has('firebase/credentials.json')){
 
             try {
                 $client = new Google_Client();
-                $client->setAuthConfig(storage_path('app/firebase/serviceAccount.json'));
+                $client->setAuthConfig(storage_path('app/firebase/credentials.json'));
                 $client->addScope('https://www.googleapis.com/auth/firebase.messaging');
                 $client->setAccessType('offline');
                 $client->refreshTokenWithAssertion();
@@ -257,10 +257,10 @@ class NotificationController extends Controller
             }
 
         }else{
-            \Log::error('Firebase serviceAccount.json file not found in storage/app/firebase/');
+            \Log::error('Firebase credentials.json file not found in storage/app/firebase/');
             return response()->json([
                 'success' => false,
-                'message' => 'Firebase serviceAccount.json file not found. Please check your Firebase configuration.'
+                'message' => 'Firebase credentials.json file not found. Please check your Firebase configuration.'
             ]);
         }
     }
@@ -273,11 +273,11 @@ class NotificationController extends Controller
             'message' => $request->message
         ]);
 
-        if(Storage::disk('local')->has('firebase/serviceAccount.json')){
+        if(Storage::disk('local')->has('firebase/credentials.json')){
 
             try {
                 $client = new Google_Client();
-                $client->setAuthConfig(storage_path('app/firebase/serviceAccount.json'));
+                $client->setAuthConfig(storage_path('app/firebase/credentials.json'));
                 $client->addScope('https://www.googleapis.com/auth/firebase.messaging');
                 $client->setAccessType('offline');
                 $client->refreshTokenWithAssertion();
@@ -398,10 +398,10 @@ class NotificationController extends Controller
             }
 
         }else{
-            \Log::error('Firebase serviceAccount.json file not found in storage/app/firebase/');
+            \Log::error('Firebase credentials.json file not found in storage/app/firebase/');
             return response()->json([
                 'success' => false,
-                'message' => 'Firebase serviceAccount.json file not found. Please check your Firebase configuration.'
+                'message' => 'Firebase credentials.json file not found. Please check your Firebase configuration.'
             ]);
         }
     }
