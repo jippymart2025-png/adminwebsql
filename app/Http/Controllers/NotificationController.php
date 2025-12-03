@@ -406,4 +406,13 @@ class NotificationController extends Controller
         }
     }
 
+    /**
+     * Delete a notification
+     */
+    public function delete($id)
+    {
+        DB::table('notifications')->where('id', $id)->delete();
+        return response()->json(['success' => true]);
+    }
+
 }
