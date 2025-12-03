@@ -132,7 +132,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/mobile/orders/rollback', [MobileSqlBridgeController::class, 'rollbackFailedOrder']);
     Route::get('/mobile/orders/{orderId}/surge-fee', [MobileSqlBridgeController::class, 'getOrderSurgeFee']);
     Route::get('/mobile/orders/{orderId}/billing/to-pay', [OrderSupportController::class, 'fetchOrderToPay']);
-    Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee']);
     Route::post('/mobile/orders/rollback-failed', [OrderSupportController::class, 'rollbackFailedOrder']);
     Route::post('/mobile/orders/place-basic', [OrderSupportController::class, 'placeOrder']);
     Route::post('/order-billing', [OrderSupportController::class, 'createOrderBilling']);
@@ -143,6 +142,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/mobile/chat/driver/messages', [MobileSqlBridgeController::class, 'addDriverChat']);
 
 });
+Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee']);
 
 // Restaurant/Vendor API routes
     Route::get('/restaurants/nearest', [RestaurantController::class, 'nearest']);
@@ -346,7 +346,7 @@ Route::prefix('firestore')->group(function () {
     Route::post('/products', [FirestoreBridgeController::class, 'setProduct']);
     Route::get('/orders', [FirestoreBridgeController::class, 'getAllOrders']);
     Route::get('/email-templates/{type}', [FirestoreBridgeController::class, 'getEmailTemplates']);
-    Route::get('/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
+    // Route::get('/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
 //    Route::post('/chat/driver/inbox', [FirestoreBridgeController::class, 'addDriverInbox']);
 //    Route::post('/chat/driver/messages', [FirestoreBridgeController::class, 'addDriverChat']);
 //    Route::post('/chat/restaurant/inbox', [FirestoreBridgeController::class, 'addRestaurantInbox']);
@@ -365,6 +365,7 @@ Route::prefix('firestore')->group(function () {
     Route::get('/getLatestOrderInRange', [FirestoreBridgeController::class, 'getLatestOrderInRange']);
 });
 });
+Route::get('/firestore/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/products', [ProductController::class, 'getAllPublishedProducts']);
@@ -436,7 +437,7 @@ Route::get('/restaurant/users/{firebase_id}', [restaurantUserController::class, 
     ->withoutMiddleware(['throttle:api']);
 Route::post('/restaurant/update-user-wallet', [WalletTransactionController::class, 'updateUserWallet']);
 Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateUser']);
-Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateDriverUser']);
+// Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateDriverUser']);
 Route::post('/restaurant/withdraw', [WalletTransactionController::class, 'withdrawWalletAmount']);
 Route::get('/onboarding/{type}', [RestaurantAppSettingController::class, 'getOnBoardingList']);
 Route::post('/restaurant/wallet/transaction', [WalletTransactionController::class, 'setWalletTransaction']);
@@ -638,6 +639,9 @@ Route::post('/driver/wallet/withdraw-method', [WalletApiController::class, 'setW
 Route::post('/driver/wallet/driver/record', [WalletApiController::class, 'setDriverWalletRecord']);
 
 Route::post('/driver/get-current-order', [DriverSqlBridgeController::class, 'getCurrentOrder']);
+// routes/api.php
+Route::get('/driver/get-current-reject-accept', [DriverSqlBridgeController::class, 'getOrderCancelRejectCompleated']);
+
 // routes/api.php
 Route::get('/driver/{id}', [DriverSqlBridgeController::class, 'getDriver']);
 Route::get('/order/{id}', [DriverSqlBridgeController::class, 'refreshCurrentOrder']);

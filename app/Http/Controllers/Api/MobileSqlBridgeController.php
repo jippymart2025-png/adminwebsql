@@ -291,10 +291,11 @@ class MobileSqlBridgeController extends Controller
 
         $orderId = $this->generateOrderId();
         $now = Carbon::now()->toISOString();
-
+        $vendor = Vendor::query()->find($vendorContext['id']);
         $orderData = [
             'id'                    => $orderId,
             'vendorID'              => $vendorContext['id'],
+            'vendor'                => json_encode($vendor),
             'authorID'              => $authorId,
             'status'                => 'Order Placed',
             'createdAt'             => $now,
