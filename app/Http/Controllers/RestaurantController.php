@@ -2420,6 +2420,45 @@ class RestaurantController extends Controller
                 ], 404);
             }
 
+            // Resolve vendor's MySQL user ID from users table using existing method
+            $vendorOwner = $this->findVendorOwner($restaurant);
+            $vendorUserId = $vendorOwner ? $vendorOwner->id : null;
+
+            // Fetch story data for this restaurant
+            // vendor_id is text field, try direct match first, then cast comparison
+            $vendorIdString = (string)$restaurant->id;
+            $story = DB::table('story')
+                ->where('vendor_id', $vendorIdString)
+                ->first();
+
+            // If not found with direct match, try with cast (for cases where data might have extra whitespace)
+            if (!$story) {
+                $story = DB::table('story')
+                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                    ->first();
+            }
+
+            // Always include story data, even if empty
+            $videoUrl = $story ? ($story->video_url ?? '') : '';
+            // Parse video_url if it's a JSON string
+            if ($videoUrl && is_string($videoUrl)) {
+                $decoded = json_decode($videoUrl, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $videoUrl = $decoded;
+                } elseif ($videoUrl) {
+                    // If it's a single URL string, convert to array
+                    $videoUrl = [$videoUrl];
+                } else {
+                    $videoUrl = [];
+                }
+            } elseif (!$videoUrl) {
+                $videoUrl = [];
+            }
+
+            $storyData = [
+                'videoThumbnail' => $story ? ($story->video_thumbnail ?? '') : '',
+                'videoUrl' => $videoUrl
+            ];
 
             // Parse and format data
             $restaurantData = [
@@ -2434,8 +2473,10 @@ class RestaurantController extends Controller
                 'phonenumber' => $restaurant->phonenumber ?? '',
                 'zoneId' => $restaurant->zoneId ?? '',
                 'author' => $restaurant->author ?? '',
+                'vendor_db_id' => $vendorUserId, // MySQL user ID for vendor profile link
                 'authorName' => $restaurant->authorName ?? '',
                 'authorProfilePic' => $restaurant->authorProfilePic ?? '',
+                'story' => $storyData,
                 'categoryID' => $restaurant->categoryID ? json_decode($restaurant->categoryID, true) : [],
                 'categoryTitle' => $restaurant->categoryTitle ? json_decode($restaurant->categoryTitle, true) : [],
                 'cuisineID' => $restaurant->cuisineID ?? '',
@@ -2555,6 +2596,64 @@ class RestaurantController extends Controller
             if ($request->has('closeDineTime')) $restaurant->closeDineTime = $request->closeDineTime;
 
             $restaurant->save();
+
+            // Handle story data if provided
+            if ($request->has('story')) {
+                $storyData = $request->input('story');
+                $videoThumbnail = $storyData['videoThumbnail'] ?? '';
+                $videoUrl = $storyData['videoUrl'] ?? '';
+
+                // Ensure videoUrl is properly formatted (array should be JSON encoded)
+                if (is_array($videoUrl)) {
+                    $videoUrl = json_encode($videoUrl);
+                } elseif (empty($videoUrl)) {
+                    $videoUrl = '';
+                }
+
+                if ($videoThumbnail || $videoUrl) {
+                    // vendor_id is text field, try direct match first, then cast comparison
+                    $vendorIdString = (string)$id;
+                    $existingStory = DB::table('story')
+                        ->where('vendor_id', $vendorIdString)
+                        ->first();
+
+                    // If not found with direct match, try with cast
+                    if (!$existingStory) {
+                        $existingStory = DB::table('story')
+                            ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                            ->first();
+                    }
+
+                    if ($existingStory) {
+                        // Update using the same method we used to find it
+                        if (DB::table('story')->where('vendor_id', $vendorIdString)->exists()) {
+                            DB::table('story')
+                                ->where('vendor_id', $vendorIdString)
+                                ->update([
+                                    'video_thumbnail' => $videoThumbnail,
+                                    'video_url' => $videoUrl,
+                                    'updated_at' => now()
+                                ]);
+                        } else {
+                            DB::table('story')
+                                ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                                ->update([
+                                    'video_thumbnail' => $videoThumbnail,
+                                    'video_url' => $videoUrl,
+                                    'updated_at' => now()
+                                ]);
+                        }
+                    } else {
+                        DB::table('story')->insert([
+                            'vendor_id' => (string)$id,
+                            'video_thumbnail' => $videoThumbnail,
+                            'video_url' => $videoUrl,
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]);
+                    }
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -3872,17 +3971,39 @@ class RestaurantController extends Controller
     }
 
     /**
-     * Lightweight Story API for restaurants (used by edit page JS)
-     * Returns empty data to avoid breaking the page if story feature is unused.
+     * Get story for a restaurant
      */
     public function getRestaurantStory($id)
     {
         try {
+            // vendor_id is text field, try direct match first, then cast comparison
+            $vendorIdString = (string)$id;
+            $story = DB::table('story')
+                ->where('vendor_id', $vendorIdString)
+                ->first();
+
+            // If not found with direct match, try with cast (for cases where data might have extra whitespace)
+            if (!$story) {
+                $story = DB::table('story')
+                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                    ->first();
+            }
+
+            if (!$story) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'videoUrl' => '',
+                        'videoThumbnail' => ''
+                    ]
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'videoUrl' => [],
-                    'videoThumbnail' => ''
+                    'videoUrl' => $story->video_url ?? '',
+                    'videoThumbnail' => $story->video_thumbnail ?? ''
                 ]
             ]);
         } catch (\Exception $e) {
@@ -3897,7 +4018,51 @@ class RestaurantController extends Controller
     public function upsertRestaurantStory(Request $request, $id)
     {
         try {
-            // Accept payload and return success (no-op storage for now)
+            $videoThumbnail = $request->input('videoThumbnail', '');
+            $videoUrl = $request->input('videoUrl', '');
+
+            // vendor_id is text field, try direct match first, then cast comparison
+            $vendorIdString = (string)$id;
+            $existingStory = DB::table('story')
+                ->where('vendor_id', $vendorIdString)
+                ->first();
+
+            // If not found with direct match, try with cast
+            if (!$existingStory) {
+                $existingStory = DB::table('story')
+                    ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                    ->first();
+            }
+
+            if ($existingStory) {
+                // Update using the same method we used to find it
+                if (DB::table('story')->where('vendor_id', $vendorIdString)->exists()) {
+                    DB::table('story')
+                        ->where('vendor_id', $vendorIdString)
+                        ->update([
+                            'video_thumbnail' => $videoThumbnail,
+                            'video_url' => $videoUrl,
+                            'updated_at' => now()
+                        ]);
+                } else {
+                    DB::table('story')
+                        ->whereRaw('TRIM(CAST(vendor_id AS CHAR)) = ?', [$vendorIdString])
+                        ->update([
+                            'video_thumbnail' => $videoThumbnail,
+                            'video_url' => $videoUrl,
+                            'updated_at' => now()
+                        ]);
+                }
+            } else {
+                DB::table('story')->insert([
+                    'vendor_id' => (string)$id,
+                    'video_thumbnail' => $videoThumbnail,
+                    'video_url' => $videoUrl,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Story saved'
