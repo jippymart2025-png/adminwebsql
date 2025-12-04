@@ -93,7 +93,7 @@ Route::patch('/app-users/{id}/active', [AdminUserController::class, 'setActive']
 Route::get('/settings/mobile', [SettingsApiController::class, 'mobileSettings'])
     ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
 Route::get('/settings/delivery-charge', [SettingsApiController::class, 'getDeliveryChargeSettings'])
-->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
+    ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
 
 Route::get('/settings/tax', [App\Http\Controllers\Api\TaxApiController::class, 'gettaxSettings'])
     ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
@@ -114,11 +114,11 @@ Route::get('/debug-otp/{phone}', [App\Http\Controllers\Api\OTPController::class,
 
 
 // Zone detection routes
-    Route::get('/zones/current', [ZoneController::class, 'getCurrentZone']);
-    Route::get('/zones/detect-id', [ZoneController::class, 'detectZoneId']);
-    Route::get('/zones/check-service-area', [ZoneController::class, 'checkServiceArea']);
-    Route::get('/zones/all', [ZoneController::class, 'getAllZones']);
-    Route::get('/zones/debug-zone-detection', [ZoneController::class, 'debugZoneDetection']); // Add this
+Route::get('/zones/current', [ZoneController::class, 'getCurrentZone']);
+Route::get('/zones/detect-id', [ZoneController::class, 'detectZoneId']);
+Route::get('/zones/check-service-area', [ZoneController::class, 'checkServiceArea']);
+Route::get('/zones/all', [ZoneController::class, 'getAllZones']);
+Route::get('/zones/debug-zone-detection', [ZoneController::class, 'debugZoneDetection']); // Add this
 
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -145,28 +145,28 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee']);
 
 // Restaurant/Vendor API routes
-    Route::get('/restaurants/nearest', [RestaurantController::class, 'nearest']);
-    Route::get('/restaurants/search', [RestaurantController::class, 'search']);
-    Route::get('/restaurants/by-zone/{zone_id}', [RestaurantController::class, 'byZone']);
-    Route::get('/restaurants/{id}', [RestaurantController::class, 'show'])
+Route::get('/restaurants/nearest', [RestaurantController::class, 'nearest']);
+Route::get('/restaurants/search', [RestaurantController::class, 'search']);
+Route::get('/restaurants/by-zone/{zone_id}', [RestaurantController::class, 'byZone']);
+Route::get('/restaurants/{id}', [RestaurantController::class, 'show'])
     ->withoutMiddleware(['throttle:api']);
 
 
 // Category API routes (Public - no auth required)
-    Route::get('/categories/home', [CategoryController::class, 'home'])
-     ->withoutMiddleware(['throttle:api']);
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::get('/categories/{id}', [CategoryController::class, 'show']);
+Route::get('/categories/home', [CategoryController::class, 'home'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/categories', [CategoryController::class, 'index']);
+Route::get('/categories/{id}', [CategoryController::class, 'show']);
 
 
 // Banner API routes (Public - no auth required)
-    Route::get('/banners/top', [BannerController::class, 'top']);
-    Route::get('/banners', [BannerController::class, 'index']);
-    Route::get('/banners/{id}', [BannerController::class, 'show']);
+Route::get('/banners/top', [BannerController::class, 'top']);
+Route::get('/banners', [BannerController::class, 'index']);
+Route::get('/banners/{id}', [BannerController::class, 'show']);
 // Menu Item Banner API routes (Public - no auth required)
-    Route::get('/menu-items/banners/top', [MenuItemBannerController::class, 'top']);
-    Route::get('/menu-items/banners/middle', [MenuItemBannerController::class, 'middle']);
-    Route::get('/menu-items/banners/bottom', [MenuItemBannerController::class, 'bottom']);
+Route::get('/menu-items/banners/top', [MenuItemBannerController::class, 'top']);
+Route::get('/menu-items/banners/middle', [MenuItemBannerController::class, 'middle']);
+Route::get('/menu-items/banners/bottom', [MenuItemBannerController::class, 'bottom']);
 //Route::get('/menu-items/banners', [MenuItemBannerController::class, 'index']);
 Route::get('/menu-items/banners/{id}', [MenuItemBannerController::class, 'show']);
 
@@ -184,7 +184,7 @@ Route::get('/test-server', function () {
 });
 
 // Stories API routes (Public - no auth required)
-    Route::get('/stories', [StoryController::class, 'index']);
+Route::get('/stories', [StoryController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/{userId}/shipping-address', [ShippingAddressController::class, 'show']);
@@ -204,17 +204,17 @@ Route::middleware('auth:sanctum')->group(function () {
 // User Profile API routes (Customers only)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/profile/{firebase_id}', [UserProfileController::class, 'show'])
-    ->withoutMiddleware(['throttle:api'])   // REMOVE default throttle
-    ->middleware('throttle:200,1');         // ADD custom throttle
+        ->withoutMiddleware(['throttle:api'])   // REMOVE default throttle
+        ->middleware('throttle:200,1');         // ADD custom throttle
     // Route::get('/users/profile/{firebase_id}', [UserProfileController::class, 'show']); // Public - get customer by firebase_id
     Route::get('/user/profile', [UserProfileController::class, 'me']) // Get current customer profile
     ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
 
     Route::post('/user/profile', [UserProfileController::class, 'update']) // Update current customer profile
-        ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
+    ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
 
     Route::delete('/users/profile/{firebase_id}', [UserProfileController::class, 'destroy']) // Delete user and related data from database
-        ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
+    ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
 
     // Route::delete('/user/profile/{firebase_id}', [UserProfileController::class, 'destroy']); // Backward compatibility
 
@@ -223,26 +223,26 @@ Route::middleware('auth:sanctum')->group(function () {
 //restaurants
 Route::middleware('auth:sanctum')->group(function () {
 
-        Route::prefix('favorites')->group(function () {
+    Route::prefix('favorites')->group(function () {
 
-            Route::get('restaurants/{firebase_id}', [FavoriteController::class, 'getFavoriteRestaurants'])
-                ->withoutMiddleware(['throttle:api']);  // Disable default throttle
+        Route::get('restaurants/{firebase_id}', [FavoriteController::class, 'getFavoriteRestaurants'])
+            ->withoutMiddleware(['throttle:api']);  // Disable default throttle
 
-            Route::post('restaurants', [FavoriteController::class, 'addFavoriteRestaurant'])
-                ->withoutMiddleware(['throttle:api']);
+        Route::post('restaurants', [FavoriteController::class, 'addFavoriteRestaurant'])
+            ->withoutMiddleware(['throttle:api']);
 
-            Route::delete('restaurants', [FavoriteController::class, 'removeFavoriteRestaurant'])
-                ->withoutMiddleware(['throttle:api']);
+        Route::delete('restaurants', [FavoriteController::class, 'removeFavoriteRestaurant'])
+            ->withoutMiddleware(['throttle:api']);
 
-            Route::get('items/{firebase_id}', [FavoriteController::class, 'getFavoriteItems'])
-                ->withoutMiddleware(['throttle:api']);
+        Route::get('items/{firebase_id}', [FavoriteController::class, 'getFavoriteItems'])
+            ->withoutMiddleware(['throttle:api']);
 
-            Route::post('items', [FavoriteController::class, 'addFavoriteItem'])
-                ->withoutMiddleware(['throttle:api']);
+        Route::post('items', [FavoriteController::class, 'addFavoriteItem'])
+            ->withoutMiddleware(['throttle:api']);
 
-            Route::delete('items', [FavoriteController::class, 'removeFavoriteItem'])
-                ->withoutMiddleware(['throttle:api']);
-        });
+        Route::delete('items', [FavoriteController::class, 'removeFavoriteItem'])
+            ->withoutMiddleware(['throttle:api']);
+    });
 
 
     // Route::prefix('favorites')->group(function () {
@@ -262,18 +262,18 @@ Route::middleware('auth:sanctum')->group(function () {
 // vendor
 Route::middleware('auth:sanctum')->group(function () {
 
-Route::prefix('vendors')->group(function () {
-    Route::get('{vendorId}/products', [\App\Http\Controllers\Api\ProductController::class, 'getProductsByVendorId']);
-    Route::get('{vendorId}/offers', [VendorController::class, 'getOffersByVendorId']);
-    Route::get('{categoryId}/category', [VendorController::class, 'getNearestRestaurantByCategory']);
-});
+    Route::prefix('vendors')->group(function () {
+        Route::get('{vendorId}/products', [\App\Http\Controllers\Api\ProductController::class, 'getProductsByVendorId']);
+        Route::get('{vendorId}/offers', [VendorController::class, 'getOffersByVendorId']);
+        Route::get('{categoryId}/category', [VendorController::class, 'getNearestRestaurantByCategory']);
+    });
     Route::get('vendor-categories/{id}', [VendorController::class, 'getVendorCategoryById']);
     Route::get('products/{id}', [VendorController::class, 'getProductById']);
 });
 
-    Route::get('/mart-vendor/default', [VendorController::class, 'getDefaultMartVendor']);
-    Route::get('/mart-vendor/zone/{zoneId}', [VendorController::class, 'getMartVendorsByZone']);
-    Route::get('/mart-vendor/{vendorId}', [VendorController::class, 'getMartVendorById']);
+Route::get('/mart-vendor/default', [VendorController::class, 'getDefaultMartVendor']);
+Route::get('/mart-vendor/zone/{zoneId}', [VendorController::class, 'getMartVendorsByZone']);
+Route::get('/mart-vendor/{vendorId}', [VendorController::class, 'getMartVendorById']);
 
 //wallet
 Route::middleware('auth:sanctum')->group(function () {
@@ -284,7 +284,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get(
         '/restaurants/{vendorId}/product-feed{extra?}',
-        [ProductController::class, 'getRestaurantProductFeed']
+        [\App\Http\Controllers\Api\ProductController::class, 'getRestaurantProductFeed']
     )->where('extra', '.*')
         ->withoutMiddleware(['throttle:api']);
 
@@ -300,29 +300,29 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 // mart all apis
-    Route::get('/mart-items/trending', [MartItemController::class, 'getTrendingItems']);
-    Route::get('/mart-items/featured', [MartItemController::class, 'getFeaturedItems']);
-    Route::get('/mart-items/on-sale', [MartItemController::class, 'getItemsOnSale']);
-    Route::get('/mart-items/search', [MartItemController::class, 'searchItems']);
-    Route::get('/mart-items/by-category', [MartItemController::class, 'getItemsByCategory']);
-    Route::get('/mart-items/by-category-only', [MartItemController::class, 'getItemsByCategoryOnly']);
-    Route::get('/mart-items/by-vendor', [MartItemController::class, 'getItemsByVendor']);
-    Route::get('/mart-items/by-section', [MartItemController::class, 'getItemsBySection']);
-    Route::get('/mart-items/all', [MartItemController::class, 'getMartItems'])
-        ->withoutMiddleware(['throttle:api']);
-    Route::get('/mart-items/by-brand', [MartItemController::class, 'getItemsByBrand']);
-    Route::get('/mart-items/sections', [MartItemController::class, 'getUniqueSections']);
-    Route::get('/mart-items/getmartcategory', [MartItemController::class, 'getmartcategory']);
-    Route::get('/mart-items/categoryhome', [MartItemController::class, 'getcategoryhome']);
-    Route::get('/mart-items/sub_category', [MartItemController::class, 'getSubcategoriesByParent']);
-    Route::get('/mart-items/sub_category_home', [MartItemController::class, 'getSubcategories_home']);
-    Route::get('/mart-items/searchSubcategories', [MartItemController::class, 'searchSubcategories']);
-    Route::get('/mart-items/getItemById', [MartItemController::class, 'getItemById']);
-    Route::get('/mart-items/searchCategories', [MartItemController::class, 'searchCategories']);
-    Route::get('/mart-items/getFeaturedCategories', [MartItemController::class, 'getFeaturedCategories']);
-    Route::get('/mart-items/getSimilarProducts', [MartItemController::class, 'getSimilarProducts']);
-    Route::get('/mart-items/getItemsBySectionName', [MartItemController::class, 'getItemsBySectionName']);
-    Route::get('/mart-items/getMartVendors', [MartItemController::class, 'getMartVendors']);
+Route::get('/mart-items/trending', [MartItemController::class, 'getTrendingItems']);
+Route::get('/mart-items/featured', [MartItemController::class, 'getFeaturedItems']);
+Route::get('/mart-items/on-sale', [MartItemController::class, 'getItemsOnSale']);
+Route::get('/mart-items/search', [MartItemController::class, 'searchItems']);
+Route::get('/mart-items/by-category', [MartItemController::class, 'getItemsByCategory']);
+Route::get('/mart-items/by-category-only', [MartItemController::class, 'getItemsByCategoryOnly']);
+Route::get('/mart-items/by-vendor', [MartItemController::class, 'getItemsByVendor']);
+Route::get('/mart-items/by-section', [MartItemController::class, 'getItemsBySection']);
+Route::get('/mart-items/all', [MartItemController::class, 'getMartItems'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/mart-items/by-brand', [MartItemController::class, 'getItemsByBrand']);
+Route::get('/mart-items/sections', [MartItemController::class, 'getUniqueSections']);
+Route::get('/mart-items/getmartcategory', [MartItemController::class, 'getmartcategory']);
+Route::get('/mart-items/categoryhome', [MartItemController::class, 'getcategoryhome']);
+Route::get('/mart-items/sub_category', [MartItemController::class, 'getSubcategoriesByParent']);
+Route::get('/mart-items/sub_category_home', [MartItemController::class, 'getSubcategories_home']);
+Route::get('/mart-items/searchSubcategories', [MartItemController::class, 'searchSubcategories']);
+Route::get('/mart-items/getItemById', [MartItemController::class, 'getItemById']);
+Route::get('/mart-items/searchCategories', [MartItemController::class, 'searchCategories']);
+Route::get('/mart-items/getFeaturedCategories', [MartItemController::class, 'getFeaturedCategories']);
+Route::get('/mart-items/getSimilarProducts', [MartItemController::class, 'getSimilarProducts']);
+Route::get('/mart-items/getItemsBySectionName', [MartItemController::class, 'getItemsBySectionName']);
+Route::get('/mart-items/getMartVendors', [MartItemController::class, 'getMartVendors']);
 
 
 
@@ -340,30 +340,30 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 Route::middleware('auth:sanctum')->group(function () {
-Route::prefix('firestore')->group(function () {
-    Route::get('/settings/razorpay', [FirestoreBridgeController::class, 'getRazorpaySettings']);
-    Route::get('/settings/cod', [FirestoreBridgeController::class, 'getCodSettings']);
-    Route::post('/products', [FirestoreBridgeController::class, 'setProduct']);
-    Route::get('/orders', [FirestoreBridgeController::class, 'getAllOrders']);
-    Route::get('/email-templates/{type}', [FirestoreBridgeController::class, 'getEmailTemplates']);
-    // Route::get('/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
+    Route::prefix('firestore')->group(function () {
+        Route::get('/settings/razorpay', [FirestoreBridgeController::class, 'getRazorpaySettings']);
+        Route::get('/settings/cod', [FirestoreBridgeController::class, 'getCodSettings']);
+        Route::post('/products', [FirestoreBridgeController::class, 'setProduct']);
+        Route::get('/orders', [FirestoreBridgeController::class, 'getAllOrders']);
+        Route::get('/email-templates/{type}', [FirestoreBridgeController::class, 'getEmailTemplates']);
+        // Route::get('/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
 //    Route::post('/chat/driver/inbox', [FirestoreBridgeController::class, 'addDriverInbox']);
 //    Route::post('/chat/driver/messages', [FirestoreBridgeController::class, 'addDriverChat']);
 //    Route::post('/chat/restaurant/inbox', [FirestoreBridgeController::class, 'addRestaurantInbox']);
 //    Route::post('/chat/restaurant/messages', [FirestoreBridgeController::class, 'addRestaurantChat']);
 //    Route::post('/chat/upload-image', [FirestoreBridgeController::class, 'uploadChatImageToStorage']);
 //    Route::post('/chat/upload-video', [FirestoreBridgeController::class, 'uploadChatVideoToStorage']);
-    Route::get('/vendor-categories/{id}', [FirestoreBridgeController::class, 'getVendorCategoryByCategoryId']);
-    Route::post('/ratings', [FirestoreBridgeController::class, 'setRatingModel']);
-    Route::put('/vendors/{vendorId}', [FirestoreBridgeController::class, 'updateVendor']);
-    Route::get('/advertisements/active', [FirestoreBridgeController::class, 'getAllAdvertisement']);
-    Route::get('/promotions/active', [FirestoreBridgeController::class, 'fetchActivePromotions']);
-    Route::get('/promotions/by-product', [FirestoreBridgeController::class, 'getActivePromotionForProduct'])
-        ->withoutMiddleware(['throttle:api']);
-    Route::get('/search/products', [FirestoreBridgeController::class, 'getAllProductsInZone']);
-    Route::get('/search/vendors', [FirestoreBridgeController::class, 'getAllVendors']);
-    Route::get('/getLatestOrderInRange', [FirestoreBridgeController::class, 'getLatestOrderInRange']);
-});
+        Route::get('/vendor-categories/{id}', [FirestoreBridgeController::class, 'getVendorCategoryByCategoryId']);
+        Route::post('/ratings', [FirestoreBridgeController::class, 'setRatingModel']);
+        Route::put('/vendors/{vendorId}', [FirestoreBridgeController::class, 'updateVendor']);
+        Route::get('/advertisements/active', [FirestoreBridgeController::class, 'getAllAdvertisement']);
+        Route::get('/promotions/active', [FirestoreBridgeController::class, 'fetchActivePromotions']);
+        Route::get('/promotions/by-product', [FirestoreBridgeController::class, 'getActivePromotionForProduct'])
+            ->withoutMiddleware(['throttle:api']);
+        Route::get('/search/products', [FirestoreBridgeController::class, 'getAllProductsInZone']);
+        Route::get('/search/vendors', [FirestoreBridgeController::class, 'getAllVendors']);
+        Route::get('/getLatestOrderInRange', [FirestoreBridgeController::class, 'getLatestOrderInRange']);
+    });
 });
 Route::get('/firestore/notifications/{type}', [FirestoreBridgeController::class, 'getNotificationContent']);
 
@@ -415,7 +415,7 @@ Route::post('/chat/{orderId}', [ChatController::class, 'getChat']);
 
 Route::post('/mobile/orders/place-basic', [OrderSupportController::class, 'placeOrder']);
 Route::middleware('auth:sanctum')->group(function () {
-Route::post('/mobile/orders', [MobileSqlBridgeController::class, 'createOrder']);
+    Route::post('/mobile/orders', [MobileSqlBridgeController::class, 'createOrder']);
 });
 
 
@@ -424,7 +424,7 @@ Route::post('/mobile/orders', [MobileSqlBridgeController::class, 'createOrder'])
 
 Route::post('/driver/login', [DriverControllerLogin::class, 'driverLogin']);
 Route::post('/driver/signup', [DriverControllerLogin::class, 'driverSignup']);
-    Route::get('/users/{firebase_id}', [DriverUserController::class, 'getUserProfile']);
+Route::get('/users/{firebase_id}', [DriverUserController::class, 'getUserProfile']);
 
 
 
@@ -452,112 +452,112 @@ Route::get('/settings/getStorySettings', [MobileSqlBridgeController::class, 'get
 // ===========================================================
 
 
-    // Referrals
-    Route::post('/restaurant/referral/check-code', [FirestoreUtilsController::class, 'checkReferralCodeValidOrNot']);
-    Route::post('/restaurant/referral/get-by-code', [FirestoreUtilsController::class, 'getReferralUserByCode']);
-    Route::post('/restaurant/referral/add', [FirestoreUtilsController::class, 'referralAdd']);
+// Referrals
+Route::post('/restaurant/referral/check-code', [FirestoreUtilsController::class, 'checkReferralCodeValidOrNot']);
+Route::post('/restaurant/referral/get-by-code', [FirestoreUtilsController::class, 'getReferralUserByCode']);
+Route::post('/restaurant/referral/add', [FirestoreUtilsController::class, 'referralAdd']);
 
-    // Orders
-    Route::get('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'getOrderByOrderId'])
-        ->withoutMiddleware(['throttle:api']);
+// Orders
+Route::get('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'getOrderByOrderId'])
+    ->withoutMiddleware(['throttle:api']);
 
 Route::get('/restaurant/orders', [FirestoreUtilsController::class, 'getAllOrder'])
-        ->withoutMiddleware(['throttle:api']);
+    ->withoutMiddleware(['throttle:api']);
 
 Route::post('/restaurant/orders', [FirestoreUtilsController::class, 'setOrder']);
-    Route::post('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'updateOrder']);
-    Route::post('/restaurant/orders/wallet-credit', [FirestoreUtilsController::class, 'restaurantVendorWalletSet']);
+Route::post('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'updateOrder']);
+Route::post('/restaurant/orders/wallet-credit', [FirestoreUtilsController::class, 'restaurantVendorWalletSet']);
 
-    // Reviews
-    Route::get('/restaurant/reviews/order', [FirestoreUtilsController::class, 'getOrderReviewsByID']);
-    Route::get('/restaurant/reviews/vendor/{vendorId}', [FirestoreUtilsController::class, 'getOrderReviewsByVenderId']);
+// Reviews
+Route::get('/restaurant/reviews/order', [FirestoreUtilsController::class, 'getOrderReviewsByID']);
+Route::get('/restaurant/reviews/vendor/{vendorId}', [FirestoreUtilsController::class, 'getOrderReviewsByVenderId']);
 
-    // Products
-    Route::get('/restaurant/products', [FirestoreUtilsController::class, 'getProduct']);
-    Route::get('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'RestaurantGetProductById']);
-    Route::post('/restaurant/products', [FirestoreUtilsController::class, 'setProduct']);
-    Route::put('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'updateProduct']);
-    Route::delete('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'deleteProduct']);
-    Route::put('/restaurant/products/{productId}/availability', [FirestoreUtilsController::class, 'updateProductIsAvailable']);
-    Route::put('/restaurant/categories/{categoryId}/products-availability', [FirestoreUtilsController::class, 'setAllProductsAvailabilityForCategory']);
+// Products
+Route::get('/restaurant/products', [FirestoreUtilsController::class, 'getProduct']);
+Route::get('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'RestaurantGetProductById']);
+Route::post('/restaurant/products', [FirestoreUtilsController::class, 'setProduct']);
+Route::put('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'updateProduct']);
+Route::delete('/restaurant/products/{productId}', [FirestoreUtilsController::class, 'deleteProduct']);
+Route::put('/restaurant/products/{productId}/availability', [FirestoreUtilsController::class, 'updateProductIsAvailable']);
+Route::put('/restaurant/categories/{categoryId}/products-availability', [FirestoreUtilsController::class, 'setAllProductsAvailabilityForCategory']);
 
-    // Advertisements
-    Route::get('/advertisements', [FirestoreUtilsController::class, 'getAdvertisement']);
-    Route::get('/advertisements/{advertisementId}', [FirestoreUtilsController::class, 'getAdvertisementById']);
-    Route::post('/advertisements', [FirestoreUtilsController::class, 'firebaseCreateAdvertisement']);
-    Route::delete('/advertisements/{advertisementId}', [FirestoreUtilsController::class, 'removeAdvertisement']);
-    Route::put('/advertisements/{advertisementId}/pause-resume', [FirestoreUtilsController::class, 'pauseAndResumeAdvertisement']);
+// Advertisements
+Route::get('/advertisements', [FirestoreUtilsController::class, 'getAdvertisement']);
+Route::get('/advertisements/{advertisementId}', [FirestoreUtilsController::class, 'getAdvertisementById']);
+Route::post('/advertisements', [FirestoreUtilsController::class, 'firebaseCreateAdvertisement']);
+Route::delete('/advertisements/{advertisementId}', [FirestoreUtilsController::class, 'removeAdvertisement']);
+Route::put('/advertisements/{advertisementId}/pause-resume', [FirestoreUtilsController::class, 'pauseAndResumeAdvertisement']);
 
-    // Wallet
-    Route::get('/restaurant/wallet/transactions', [FirestoreUtilsController::class, 'getWalletTransaction']);
-    Route::post('/restaurant/wallet/transactions/filtered', [FirestoreUtilsController::class, 'getFilterWalletTransaction']);
-    Route::get('/restaurant/wallet/withdraw-history', [FirestoreUtilsController::class, 'getWithdrawHistory']);
-    Route::get('/restaurant/wallet/withdraw-method', [FirestoreUtilsController::class, 'getWithdrawMethod']);
-    Route::post('/restaurant/wallet/withdraw-method', [FirestoreUtilsController::class, 'setWithdrawMethod']);
+// Wallet
+Route::get('/restaurant/wallet/transactions', [FirestoreUtilsController::class, 'getWalletTransaction']);
+Route::post('/restaurant/wallet/transactions/filtered', [FirestoreUtilsController::class, 'getFilterWalletTransaction']);
+Route::get('/restaurant/wallet/withdraw-history', [FirestoreUtilsController::class, 'getWithdrawHistory']);
+Route::get('/restaurant/wallet/withdraw-method', [FirestoreUtilsController::class, 'getWithdrawMethod']);
+Route::post('/restaurant/wallet/withdraw-method', [FirestoreUtilsController::class, 'setWithdrawMethod']);
 
-    // Payment Settings
-    Route::get('/settings/payment', [FirestoreUtilsController::class, 'getPaymentSettingsData']);
+// Payment Settings
+Route::get('/settings/payment', [FirestoreUtilsController::class, 'getPaymentSettingsData']);
 
-    // Vendors
-    Route::get('/restaurant/vendors/{vendorId}', [FirestoreUtilsController::class, 'getVendorById'])
-        ->withoutMiddleware(['throttle:api']);
+// Vendors
+Route::get('/restaurant/vendors/{vendorId}', [FirestoreUtilsController::class, 'getVendorById'])
+    ->withoutMiddleware(['throttle:api']);
 
 Route::post('/restaurant/vendors', [FirestoreUtilsController::class, 'firebaseCreateNewVendor']);
-    Route::put('/restaurant/vendors/{vendorId}', [FirestoreUtilsController::class, 'updateVendor']);
+Route::put('/restaurant/vendors/{vendorId}', [FirestoreUtilsController::class, 'updateVendor']);
 
-    // Categories & Attributes
-    Route::get('/restaurant/vendor-categories', [FirestoreUtilsController::class, 'getVendorCategoryById']);
-    Route::get('/restaurant/vendor-categories/{categoryId}', [FirestoreUtilsController::class, 'getVendorCategoryByCategoryId']);
-    Route::put('/restaurant/vendor-categories/{categoryId}/active', [FirestoreUtilsController::class, 'updateCategoryIsActive']);
-    Route::get('/restaurant/review-attributes/{attributeId}', [FirestoreUtilsController::class, 'getVendorReviewAttribute']);
-    Route::get('/restaurant/attributes', [FirestoreUtilsController::class, 'getAttributes']);
+// Categories & Attributes
+Route::get('/restaurant/vendor-categories', [FirestoreUtilsController::class, 'getVendorCategoryById']);
+Route::get('/restaurant/vendor-categories/{categoryId}', [FirestoreUtilsController::class, 'getVendorCategoryByCategoryId']);
+Route::put('/restaurant/vendor-categories/{categoryId}/active', [FirestoreUtilsController::class, 'updateCategoryIsActive']);
+Route::get('/restaurant/review-attributes/{attributeId}', [FirestoreUtilsController::class, 'getVendorReviewAttribute']);
+Route::get('/restaurant/attributes', [FirestoreUtilsController::class, 'getAttributes']);
 
-    // Delivery & Zones
-    Route::get('/restaurant/delivery-charge', [FirestoreUtilsController::class, 'getDeliveryCharge']);
+// Delivery & Zones
+Route::get('/restaurant/delivery-charge', [FirestoreUtilsController::class, 'getDeliveryCharge']);
 Route::get('/restaurant/GetDriverNearBy', [FirestoreUtilsController::class, 'GetDriverNearBy']);
 Route::get('/restaurant/zones', [FirestoreUtilsController::class, 'getZone']);
 
-    // Dine-in Bookings
-    Route::get('/bookings/dine-in', [FirestoreUtilsController::class, 'getDineInBooking']);
-    Route::post('/bookings/dine-in', [FirestoreUtilsController::class, 'setBookedOrder']);
+// Dine-in Bookings
+Route::get('/bookings/dine-in', [FirestoreUtilsController::class, 'getDineInBooking']);
+Route::post('/bookings/dine-in', [FirestoreUtilsController::class, 'setBookedOrder']);
 
-    // Coupons
-    Route::get('/coupons/vendor/{vendorId}', [FirestoreUtilsController::class, 'getAllVendorCoupons']);
-    Route::get('/offers/vendor/{vendorId}', [FirestoreUtilsController::class, 'getOffer']);
-    Route::post('/coupons', [FirestoreUtilsController::class, 'setCoupon']);
-    Route::delete('/coupons/{couponId}', [FirestoreUtilsController::class, 'deleteCoupon']);
+// Coupons
+Route::get('/coupons/vendor/{vendorId}', [FirestoreUtilsController::class, 'getAllVendorCoupons']);
+Route::get('/offers/vendor/{vendorId}', [FirestoreUtilsController::class, 'getOffer']);
+Route::post('/coupons', [FirestoreUtilsController::class, 'setCoupon']);
+Route::delete('/coupons/{couponId}', [FirestoreUtilsController::class, 'deleteCoupon']);
 
-    // restaurant app version
-    Route::get('/restaurant/version', [MobileSqlBridgeController::class, 'getLatestrestVersionInfo']);
+// restaurant app version
+Route::get('/restaurant/version', [MobileSqlBridgeController::class, 'getLatestrestVersionInfo']);
 
 
 // Documents
-    Route::get('/documents', [FirestoreUtilsController::class, 'getDocumentList']);
-    Route::get('/documents/driver', [FirestoreUtilsController::class, 'getDocumentOfDriver']);
-    Route::post('/documents/driver/upload', [FirestoreUtilsController::class, 'uploadDriverDocument']);
+Route::get('/documents', [FirestoreUtilsController::class, 'getDocumentList']);
+Route::post('/documents/driver', [FirestoreUtilsController::class, 'getDocumentOfDriver']);
+Route::post('/documents/driver/upload', [FirestoreUtilsController::class, 'uploadDriverDocument']);
 
-    // Email & Notifications
-    Route::get('/restaurant/email-templates/{type}', [FirestoreUtilsController::class, 'getEmailTemplates']);
-    Route::get('/restaurant/notifications/{type}', [FirestoreUtilsController::class, 'getNotificationContent']);
+// Email & Notifications
+Route::get('/restaurant/email-templates/{type}', [FirestoreUtilsController::class, 'getEmailTemplates']);
+Route::get('/restaurant/notifications/{type}', [FirestoreUtilsController::class, 'getNotificationContent']);
 
-    // Stories
-    Route::get('/restaurant/stories/{vendorId}', [FirestoreUtilsController::class, 'getStory']);
-    Route::post('/restaurant/stories', [FirestoreUtilsController::class, 'addOrUpdateStory']);
-    Route::delete('/restaurant/stories/{vendorId}', [FirestoreUtilsController::class, 'removeStory']);
+// Stories
+Route::get('/restaurant/stories/{vendorId}', [FirestoreUtilsController::class, 'getStory']);
+Route::post('/restaurant/stories', [FirestoreUtilsController::class, 'addOrUpdateStory']);
+Route::delete('/restaurant/stories/{vendorId}', [FirestoreUtilsController::class, 'removeStory']);
 
-    // Subscriptions
-    Route::get('/subscriptions/plans', [FirestoreUtilsController::class, 'getAllSubscriptionPlans']);
-    Route::get('/subscriptions/plans/{planId}', [FirestoreUtilsController::class, 'getSubscriptionPlanById']);
-    Route::post('/subscriptions/plans', [FirestoreUtilsController::class, 'setSubscriptionPlan']);
-    Route::post('/subscriptions/transactions', [FirestoreUtilsController::class, 'setSubscriptionTransaction']);
-    Route::get('/subscriptions/history', [FirestoreUtilsController::class, 'getSubscriptionHistory']);
+// Subscriptions
+Route::get('/subscriptions/plans', [FirestoreUtilsController::class, 'getAllSubscriptionPlans']);
+Route::get('/subscriptions/plans/{planId}', [FirestoreUtilsController::class, 'getSubscriptionPlanById']);
+Route::post('/subscriptions/plans', [FirestoreUtilsController::class, 'setSubscriptionPlan']);
+Route::post('/subscriptions/transactions', [FirestoreUtilsController::class, 'setSubscriptionTransaction']);
+Route::get('/subscriptions/history', [FirestoreUtilsController::class, 'getSubscriptionHistory']);
 
-    // Drivers
-    Route::get('/drivers/available', [FirestoreUtilsController::class, 'getAvalibleDrivers']);
-    Route::get('/drivers/all', [FirestoreUtilsController::class, 'getAllDrivers']);
+// Drivers
+Route::get('/drivers/available', [FirestoreUtilsController::class, 'getAvalibleDrivers']);
+Route::get('/drivers/all', [FirestoreUtilsController::class, 'getAllDrivers']);
 
-    Route::get('/restaurant/exists/{uid}', [restaurantControllerLogin::class, 'checkUserExists']);
-    Route::delete('/restaurant/user_delete', [restaurantControllerLogin::class, 'deleteUserById']);
+Route::get('/restaurant/exists/{uid}', [restaurantControllerLogin::class, 'checkUserExists']);
+Route::delete('/restaurant/user_delete', [restaurantControllerLogin::class, 'deleteUserById']);
 
 Route::prefix('chat-restaurant')->group(function () {
     Route::post('inbox', [ChatRestaurantController::class, 'addInbox']); // Add/Update inbox

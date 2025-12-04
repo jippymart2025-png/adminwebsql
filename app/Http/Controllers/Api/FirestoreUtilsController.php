@@ -1075,7 +1075,7 @@ class FirestoreUtilsController extends Controller
                 ->where('id', $request->author)
                 ->update([
                     'vendorID' => $data['id'],
-                    'updated_at' => now()
+                    '_updated_at' => now()
                 ]);
 
             return response()->json([
