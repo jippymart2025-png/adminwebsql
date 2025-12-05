@@ -186,8 +186,8 @@
         var sendable_coordinates = [];
         var shapeColor = "#007cff";
         var kernelColor = "#000";
-        var default_lat = getCookie('default_latitude');
-        var default_lng = getCookie('default_longitude');
+        var default_lat = getCookie('default_latitude') || '23.022505';
+        var default_lng = getCookie('default_longitude') || '72.571365';
         var drawnItems;
         var deleteButton, dragMap;
         var selectedPolygon = null;
@@ -252,20 +252,59 @@
             }, 100);
         }
 
-        // DIRECT APPROACH: Load Google Maps immediately without waiting for layout
+        // DIRECT APPROACH: Load map scripts based on map type
         console.log('🚀🚀🚀 ZONE CREATE PAGE LOADING - TIMESTAMP:', new Date().toISOString());
         console.log('📊 Map Type:', mapType);
         console.log('🔍 Google exists:', typeof google !== 'undefined');
+        console.log('🔍 Leaflet exists:', typeof L !== 'undefined');
         
-        // FORCE LOAD Google Maps with your working API key
-        if (typeof google === 'undefined') {
-            console.log('⚡ FORCE LOADING Google Maps NOW...');
-            var forceScript = document.createElement('script');
-            forceScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneMap';
-            forceScript.async = false; // Load synchronously
-            forceScript.defer = false;
-            document.head.appendChild(forceScript);
-            console.log('✅ Script tag added to head');
+        // Load appropriate map library based on mapType
+        if (mapType === "OFFLINE") {
+            // Load Leaflet scripts for offline maps
+            if (typeof L === 'undefined') {
+                console.log('⚡ LOADING Leaflet (OpenStreetMap) NOW...');
+                
+                // Load Leaflet core
+                var leafletScript = document.createElement('script');
+                leafletScript.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
+                leafletScript.onload = function() {
+                    console.log('✅ Leaflet core loaded');
+                    
+                    // Load Leaflet Draw
+                    var leafletDrawScript = document.createElement('script');
+                    leafletDrawScript.src = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.js';
+                    leafletDrawScript.onload = function() {
+                        console.log('✅ Leaflet Draw loaded');
+                        // Initialize map after Leaflet is loaded
+                        setTimeout(function() {
+                            initMap();
+                        }, 500);
+                    };
+                    document.head.appendChild(leafletDrawScript);
+                };
+                document.head.appendChild(leafletScript);
+            } else {
+                // Leaflet already loaded, initialize map
+                setTimeout(function() {
+                    initMap();
+                }, 500);
+            }
+        } else {
+            // FORCE LOAD Google Maps with your working API key
+            if (typeof google === 'undefined') {
+                console.log('⚡ FORCE LOADING Google Maps NOW...');
+                var forceScript = document.createElement('script');
+                forceScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneMap';
+                forceScript.async = false; // Load synchronously
+                forceScript.defer = false;
+                document.head.appendChild(forceScript);
+                console.log('✅ Script tag added to head');
+            } else {
+                // Google Maps already loaded, initialize map
+                setTimeout(function() {
+                    initMap();
+                }, 500);
+            }
         }
         
         // Callback function for Google Maps
@@ -280,18 +319,31 @@
         $(document).ready(function () {
             console.log('📄 Document ready event fired');
             
-            // Fallback if callback doesn't fire
+            // Fallback if callback doesn't fire - check both map types
             setTimeout(function() {
-                if (typeof google !== 'undefined' && google.maps) {
-                    console.log('✅ Google Maps detected via fallback check');
-                    if (!document.getElementById('map').hasChildNodes()) {
-                        console.log('🔧 Map not initialized yet, initializing now...');
-                        initMap();
+                var mapElement = document.getElementById('map');
+                if (!mapElement || !mapElement.hasChildNodes()) {
+                    if (mapType === "OFFLINE") {
+                        if (typeof L !== 'undefined' && L.map) {
+                            console.log('✅ Leaflet detected via fallback check');
+                            console.log('🔧 Map not initialized yet, initializing now...');
+                            initMap();
+                        } else {
+                            console.error('❌ Leaflet still not loaded after 5 seconds');
+                            console.error('🌐 Check your internet connection');
+                            console.error('📦 Verify Leaflet CDN is accessible');
+                        }
+                    } else {
+                        if (typeof google !== 'undefined' && google.maps) {
+                            console.log('✅ Google Maps detected via fallback check');
+                            console.log('🔧 Map not initialized yet, initializing now...');
+                            initMap();
+                        } else {
+                            console.error('❌ Google Maps still not loaded after 5 seconds');
+                            console.error('🌐 Check your internet connection');
+                            console.error('🔑 Verify API key at: https://console.cloud.google.com/');
+                        }
                     }
-                } else {
-                    console.error('❌ Google Maps still not loaded after 5 seconds');
-                    console.error('🌐 Check your internet connection');
-                    console.error('🔑 Verify API key at: https://console.cloud.google.com/');
                 }
             }, 5000);
             $(".save-setting-btn").click(function () {

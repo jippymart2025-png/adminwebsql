@@ -1932,22 +1932,22 @@
                         }, 3000);
 
                         var nextCount = $("#story_vedios").children().length;
-                        var localPreview = URL.createObjectURL(f); // preview URL
+                        var uploadedVideoUrl = response.url; // Use uploaded URL
 
                         var html = `
 <div class="col-md-3" id="story_div_${nextCount}">
     <div class="video-inner">
         <video width="320" height="240" controls autoplay muted>
-            <source src="${localPreview}" type="video/mp4">
+            <source src="${uploadedVideoUrl}" type="video/mp4">
         </video>
-        <span class="remove-story-video" data-id="${nextCount}" data-img="${response.url}">
+        <span class="remove-story-video" data-id="${nextCount}" data-img="${uploadedVideoUrl}">
             <i class="fa fa-remove"></i>
         </span>
     </div>
 </div>`;
 
                         jQuery("#story_vedios").append(html);
-                        story_vedios.push(response.url);
+                        story_vedios.push(uploadedVideoUrl);
                         $("#video_file").val('');
                     } catch (error) {
                         console.error('Error uploading story video:', error);

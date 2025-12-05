@@ -2503,6 +2503,26 @@ class RestaurantController extends Controller
                 'closetime' => $restaurant->closetime ?? ''
             ];
 
+            // Load story data if exists
+            $story = DB::table('story')->where('vendor_id', $restaurant->id)->first();
+            if ($story) {
+                // Parse video_url from comma-separated string to array
+                $videoUrls = [];
+                if (!empty($story->video_url)) {
+                    $videoUrls = explode(',', $story->video_url);
+                    $videoUrls = array_filter(array_map('trim', $videoUrls));
+                }
+                $restaurantData['story'] = [
+                    'videoThumbnail' => $story->video_thumbnail ?? '',
+                    'videoUrl' => $videoUrls
+                ];
+            } else {
+                $restaurantData['story'] = [
+                    'videoThumbnail' => '',
+                    'videoUrl' => []
+                ];
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => $restaurantData
@@ -2584,6 +2604,35 @@ class RestaurantController extends Controller
             if ($request->has('closeDineTime')) $restaurant->closeDineTime = $request->closeDineTime;
 
             $restaurant->save();
+
+            // Save story data if provided
+            if ($request->has('storyData') && !empty($request->storyData)) {
+                $storyData = $request->storyData;
+                $videoThumbnail = $storyData['thumbnail'] ?? '';
+                $videoUrls = $storyData['videos'] ?? [];
+
+                if (!empty($videoThumbnail) || !empty($videoUrls)) {
+                    // Convert array to comma-separated string
+                    $videoUrlString = !empty($videoUrls) ? implode(',', $videoUrls) : null;
+
+                    $firestoreId = 'story_' . Str::uuid()->toString();
+
+                    DB::table('story')->updateOrInsert(
+                        ['vendor_id' => $restaurant->id],
+                        [
+                            'firestore_id' => $firestoreId,
+                            'vendor_id' => $restaurant->id,
+                            'video_thumbnail' => $videoThumbnail,
+                            'video_url' => $videoUrlString,
+                            'created_at' => now(),
+                            'updated_at' => now()
+                        ]
+                    );
+                } else {
+                    // Delete story if both thumbnail and videos are empty
+                    DB::table('story')->where('vendor_id', $restaurant->id)->delete();
+                }
+            }
 
             return response()->json([
                 'success' => true,
@@ -3795,19 +3844,36 @@ class RestaurantController extends Controller
     }
 
     /**
-     * Upload base64 image to storage
+     * Upload base64 image or video to storage
      */
     private function uploadBase64Image($base64Data, $folder = 'vendor_documents', $filename = null)
     {
         try {
-            // Remove data URL prefix if present
-            $base64Data = preg_replace('/^data:image\/[a-z]+;base64,/', '', $base64Data);
+            // Detect if it's a video or image based on data URL prefix
+            $isVideo = false;
+            $fileExtension = null;
+            
+            // Check for video data URL prefix (e.g., data:video/mp4;base64,)
+            if (preg_match('/^data:video\/([a-z0-9]+);base64,/', $base64Data, $matches)) {
+                $isVideo = true;
+                $fileExtension = $matches[1]; // Extract video format (mp4, webm, etc.)
+                $base64Data = preg_replace('/^data:video\/[a-z0-9]+;base64,/', '', $base64Data);
+            }
+            // Check for image data URL prefix (e.g., data:image/jpeg;base64,)
+            elseif (preg_match('/^data:image\/([a-z]+);base64,/', $base64Data, $matches)) {
+                $fileExtension = $matches[1]; // Extract image format (jpeg, png, gif, etc.)
+                $base64Data = preg_replace('/^data:image\/[a-z]+;base64,/', '', $base64Data);
+            }
+            // Fallback: try to remove any data URL prefix
+            else {
+                $base64Data = preg_replace('/^data:[^;]+;base64,/', '', $base64Data);
+            }
 
             // Decode base64
-            $imageData = base64_decode($base64Data);
+            $fileData = base64_decode($base64Data);
 
-            if (!$imageData) {
-                throw new \Exception('Invalid base64 image data');
+            if (!$fileData) {
+                throw new \Exception('Invalid base64 data');
             }
 
             // Generate filename if not provided
@@ -3815,25 +3881,33 @@ class RestaurantController extends Controller
                 $filename = uniqid() . '_' . time();
             }
 
-            // Add extension if not present
-            if (!preg_match('/\.(jpg|jpeg|png|gif)$/i', $filename)) {
-                $filename .= '.jpg';
+            // Preserve existing extension if present, otherwise add appropriate extension
+            if (!preg_match('/\.(jpg|jpeg|png|gif|mp4|webm|mov|avi)$/i', $filename)) {
+                if ($isVideo && $fileExtension) {
+                    $filename .= '.' . $fileExtension;
+                } elseif ($fileExtension) {
+                    // For images, use the detected extension or default to jpg
+                    $filename .= '.' . ($fileExtension === 'jpeg' ? 'jpg' : $fileExtension);
+                } else {
+                    // Default to jpg for images if no extension detected
+                    $filename .= '.jpg';
+                }
             }
 
             // Save file using Storage
             $path = $folder . '/' . $filename;
-            Storage::disk('public')->put($path, $imageData);
+            Storage::disk('public')->put($path, $fileData);
 
-            // Return public URL
-            return Storage::disk('public')->url($path);
+            // Return public URL using asset() to ensure proper domain
+            return asset('storage/' . $path);
         } catch (\Exception $e) {
-            \Log::error('Error uploading base64 image: ' . $e->getMessage());
+            \Log::error('Error uploading base64 file: ' . $e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Generic image upload API endpoint
+     * Generic image/video upload API endpoint (handles base64 encoded files)
      */
     public function uploadImage(Request $request)
     {

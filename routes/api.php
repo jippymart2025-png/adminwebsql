@@ -114,12 +114,16 @@ Route::get('/debug-otp/{phone}', [App\Http\Controllers\Api\OTPController::class,
 
 
 // Zone detection routes
-Route::get('/zones/current', [ZoneController::class, 'getCurrentZone']);
-Route::get('/zones/detect-id', [ZoneController::class, 'detectZoneId']);
-Route::get('/zones/check-service-area', [ZoneController::class, 'checkServiceArea']);
-Route::get('/zones/all', [ZoneController::class, 'getAllZones']);
-Route::get('/zones/debug-zone-detection', [ZoneController::class, 'debugZoneDetection']); // Add this
-
+Route::get('/zones/current', [ZoneController::class, 'getCurrentZone'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/zones/detect-id', [ZoneController::class, 'detectZoneId'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/zones/check-service-area', [ZoneController::class, 'checkServiceArea'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/zones/all', [ZoneController::class, 'getAllZones'])
+    ->withoutMiddleware(['throttle:api']);
+Route::get('/zones/debug-zone-detection', [ZoneController::class, 'debugZoneDetection']) // Add this
+ ->withoutMiddleware(['throttle:api']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/mobile/brands/{brandId}', [MobileSqlBridgeController::class, 'fetchBrand']);
@@ -131,7 +135,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/mobile/orders', [MobileSqlBridgeController::class, 'createOrder']);
     Route::post('/mobile/orders/rollback', [MobileSqlBridgeController::class, 'rollbackFailedOrder']);
     Route::get('/mobile/orders/{orderId}/surge-fee', [MobileSqlBridgeController::class, 'getOrderSurgeFee']);
-    Route::get('/mobile/orders/{orderId}/billing/to-pay', [OrderSupportController::class, 'fetchOrderToPay']);
     Route::post('/mobile/orders/rollback-failed', [OrderSupportController::class, 'rollbackFailedOrder']);
     Route::post('/mobile/orders/place-basic', [OrderSupportController::class, 'placeOrder']);
     Route::post('/order-billing', [OrderSupportController::class, 'createOrderBilling']);
@@ -143,6 +146,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 });
 Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee']);
+Route::get('/mobile/orders/{orderId}/billing/to-pay', [OrderSupportController::class, 'fetchOrderToPay']);
+
 
 // Restaurant/Vendor API routes
 Route::get('/restaurants/nearest', [RestaurantController::class, 'nearest']);
@@ -204,8 +209,8 @@ Route::middleware('auth:sanctum')->group(function () {
 // User Profile API routes (Customers only)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/profile/{firebase_id}', [UserProfileController::class, 'show'])
-        ->withoutMiddleware(['throttle:api'])   // REMOVE default throttle
-        ->middleware('throttle:200,1');         // ADD custom throttle
+        ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
+//        ->middleware('throttle:200,1');         // ADD custom throttle
     // Route::get('/users/profile/{firebase_id}', [UserProfileController::class, 'show']); // Public - get customer by firebase_id
     Route::get('/user/profile', [UserProfileController::class, 'me']) // Get current customer profile
     ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
@@ -272,7 +277,8 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::get('/mart-vendor/default', [VendorController::class, 'getDefaultMartVendor']);
-Route::get('/mart-vendor/zone/{zoneId}', [VendorController::class, 'getMartVendorsByZone']);
+Route::get('/mart-vendor/zone/{zoneId}', [VendorController::class, 'getMartVendorsByZone'])
+    ->withoutMiddleware(['throttle:api']);
 Route::get('/mart-vendor/{vendorId}', [VendorController::class, 'getMartVendorById']);
 
 //wallet

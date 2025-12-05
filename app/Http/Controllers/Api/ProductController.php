@@ -219,9 +219,16 @@ class ProductController extends Controller
             }
 
             $transformedProducts = $products
-                ->map(function (VendorProduct $product) use ($promotions, $categories) {
+                ->map(function (VendorProduct $product) use ($promotions, $categories, $vendorId) {
+
                     $category = $categories->get($product->categoryID);
-                    return $this->transformProduct($product, $promotions, $category);
+
+                    $data = $this->transformProduct($product, $promotions, $category);
+
+                    // ⭐ Add vendorID here
+                    $data['vendorID'] = $vendorId;
+
+                    return $data;
                 });
 
             if ($filters['offer_only'] === true) {
