@@ -906,7 +906,6 @@
                                     </div>
                                 </div>
 
-
                             </fieldset>
                         </div>
                     </div>
@@ -989,51 +988,6 @@
             }
         });
 
-        {{--// Load zones from SQL with area data--}}
-        {{--console.log('Loading zones from SQL...');--}}
-        {{--$.ajax({--}}
-        {{--    url: '{{ route("vendors.zones") }}',--}}
-        {{--    method: 'GET',--}}
-        {{--    success: function(response) {--}}
-        {{--        console.log('Zones loaded:', response.data);--}}
-        {{--        if (response.success && response.data) {--}}
-        {{--            // Get full zone data including area from database--}}
-        {{--            response.data.forEach(function(zone) {--}}
-        {{--                // Fetch complete zone data with area--}}
-        {{--                $.ajax({--}}
-        {{--                    url: '/api/zone/' + zone.id,--}}
-        {{--                    method: 'GET',--}}
-        {{--                    success: function(zoneData) {--}}
-        {{--                        var area = [];--}}
-        {{--                        if (zoneData.area) {--}}
-        {{--                            try {--}}
-        {{--                                var areaData = typeof zoneData.area === 'string' ? JSON.parse(zoneData.area) : zoneData.area;--}}
-        {{--                                if (Array.isArray(areaData)) {--}}
-        {{--                                    areaData.forEach((location) => {--}}
-        {{--                                        area.push({'latitude': location.latitude, 'longitude': location.longitude});--}}
-        {{--                                    });--}}
-        {{--                                }--}}
-        {{--                            } catch(e) {--}}
-        {{--                                console.error('Error parsing zone area:', e);--}}
-        {{--                            }--}}
-        {{--                        }--}}
-        {{--                        $('#zone').append($("<option></option>")--}}
-        {{--                            .attr("value", zoneData.id)--}}
-        {{--                            .attr("data-area", JSON.stringify(area))--}}
-        {{--                            .text(zoneData.name));--}}
-        {{--                    },--}}
-        {{--                    error: function() {--}}
-        {{--                        // Fallback - add without area data--}}
-        {{--                        $('#zone').append($("<option></option>")--}}
-        {{--                            .attr("value", zone.id)--}}
-        {{--                            .attr("data-area", "[]")--}}
-        {{--                            .text(zone.name));--}}
-        {{--                    }--}}
-        {{--                });--}}
-        {{--            });--}}
-        {{--        }--}}
-        {{--    }--}}
-        {{--});--}}
         $(document).ready(function () {
 
             $.ajax({
@@ -1606,9 +1560,10 @@
                     window.scrollTo(0,0);
                 }, 60000); // 60 seconds timeout
 
-                // Story upload disabled - requires Firebase
-                // Stories can be added later via restaurant edit page if needed
-                console.log('Story upload skipped (requires Firebase)');
+                // Store story data
+                console.log('Storing story data...');
+                const StoryIMG = await storeStoryImageData();
+                console.log('Story thumbnail stored successfully:', StoryIMG);
 
                 var delivery_charges_per_km=parseInt($("#delivery_charges_per_km").val());
                 var minimum_delivery_charges=parseInt($("#minimum_delivery_charges").val());
@@ -1683,7 +1638,11 @@
                             restaurant_id: restaurant_id,
                             user_id: user_id,
                             restaurantData: restaurantData,
-                            updateUserVendorID: user_id !== "admin_created"
+                            updateUserVendorID: user_id !== "admin_created",
+                            storyData: {
+                                thumbnail: StoryIMG.storyThumbnailImage || '',
+                                videos: story_vedios || []
+                            }
                         },
                         success: function(response) {
                             console.log('Restaurant created successfully');
@@ -1907,13 +1866,102 @@
         }
 
 
-        function handleStoryFileSelect(evt) {
-            // Story upload disabled - Firebase not available
-            alert('Story upload is currently disabled. Stories can be added later via edit page.');
-            evt.target.value = '';
-            return false;
-        }
+        async function handleStoryFileSelect(evt) {
+            var f = evt.target.files[0];
+            if (!f) return false;
 
+            var fileInput = document.getElementById('video_file');
+            var filePath = fileInput.value;
+            var allowedExtensions = /(\.mp4)$/i;
+
+            if (!allowedExtensions.exec(filePath)) {
+                $(".error_top").show();
+                $(".error_top").html("");
+                $(".error_top").append("<p>Error: Invalid video type. Only MP4 files are allowed.</p>");
+                window.scrollTo(0, 0);
+                fileInput.value = '';
+                return false;
+            }
+
+            // Check video duration if needed
+            var video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = async function () {
+                window.URL.revokeObjectURL(video.src);
+
+                // Optional: Check duration limit (30 seconds default)
+                if (storevideoDuration > 0 && video.duration > storevideoDuration) {
+                    $(".error_top").show();
+                    $(".error_top").html("");
+                    $(".error_top").append("<p>Error: Story video duration maximum allowed is " + storevideoDuration + " seconds</p>");
+                    window.scrollTo(0, 0);
+                    evt.target.value = '';
+                    return false;
+                }
+
+                // Read file as base64
+                var reader = new FileReader();
+                reader.onload = async function (e) {
+                    var filePayload = e.target.result;
+                    var val = f.name;
+                    var ext = val.split('.').pop();
+                    var filename = (f.name).replace(/C:\\fakepath\\/i, '');
+                    var timestamp = Number(new Date());
+                    filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
+
+                    try {
+                        jQuery("#uploding_story_video").text("Video is uploading...");
+
+                        // Upload video via Laravel API
+                        const response = await $.ajax({
+                            url: '/api/upload-image',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                image: filePayload,
+                                folder: 'restaurants/story',
+                                filename: filename
+                            }
+                        });
+
+                        jQuery("#uploding_story_video").text("Upload completed");
+                        setTimeout(function () {
+                            jQuery("#uploding_story_video").empty();
+                        }, 3000);
+
+                        var nextCount = $("#story_vedios").children().length;
+                        var localPreview = URL.createObjectURL(f); // preview URL
+
+                        var html = `
+<div class="col-md-3" id="story_div_${nextCount}">
+    <div class="video-inner">
+        <video width="320" height="240" controls autoplay muted>
+            <source src="${localPreview}" type="video/mp4">
+        </video>
+        <span class="remove-story-video" data-id="${nextCount}" data-img="${response.url}">
+            <i class="fa fa-remove"></i>
+        </span>
+    </div>
+</div>`;
+
+                        jQuery("#story_vedios").append(html);
+                        story_vedios.push(response.url);
+                        $("#video_file").val('');
+                    } catch (error) {
+                        console.error('Error uploading story video:', error);
+                        jQuery("#uploding_story_video").text("Upload failed");
+                        $(".error_top").show();
+                        $(".error_top").html("");
+                        $(".error_top").append("<p>Error uploading video: " + (error.responseJSON?.message || error.message) + "</p>");
+                        window.scrollTo(0, 0);
+                    }
+                };
+                reader.readAsDataURL(f);
+            };
+            video.src = URL.createObjectURL(f);
+        }
 
         $(document).on("click",".remove-story-video",function() {
             var id=$(this).attr('data-id');
@@ -1954,10 +2002,36 @@
             console.log('Story deletion skipped (Firebase disabled)');
         }
         async function storeStoryImageData() {
-            // Story upload disabled - returns empty
-            var newPhoto=[];
-            newPhoto['storyThumbnailImage']='';
-            return newPhoto;
+            // // Story upload disabled - returns empty
+            // var newPhoto=[];
+            // newPhoto['storyThumbnailImage']='';
+            // return newPhoto;
+            var newPhoto = [];
+            try {
+                if (story_thumbnail && story_thumbnail !== '') {
+                    // Upload thumbnail via Laravel API
+                    const response = await $.ajax({
+                        url: '/api/upload-image',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            image: story_thumbnail,
+                            folder: 'restaurants/story',
+                            filename: story_thumbnail_filename || 'story_thumbnail_' + Date.now() + '.jpg'
+                        }
+                    });
+                    newPhoto['storyThumbnailImage'] = response.url;
+                } else {
+                    newPhoto['storyThumbnailImage'] = '';
+                }
+                return newPhoto;
+            } catch (error) {
+                console.error('Error storing story thumbnail:', error);
+                newPhoto['storyThumbnailImage'] = '';
+                return newPhoto;
+            }
         }
 
         function handleStoryThumbnailFileSelect(evt) {
