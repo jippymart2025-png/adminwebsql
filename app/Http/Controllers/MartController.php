@@ -87,7 +87,7 @@ class MartController extends Controller
                 $createdAt = (string) ($row->createdAt ?? '');
                 try {
                     $createdAtNorm = is_string($createdAt) ? trim($createdAt, "\" ") : $createdAt;
-                    $dt = \Carbon\Carbon::parse($createdAtNorm);
+                    $dt = \Carbon\Carbon::parse($createdAtNorm)->timezone('Asia/Kolkata');
                     $createdAtText = $dt->format('M d, Y h:i A');
                 } catch (\Throwable $e) {
                     $createdAtText = $createdAt;
@@ -203,16 +203,34 @@ class MartController extends Controller
 
     public function edit($id)
     {
-        $mart = \Illuminate\Support\Facades\DB::table('vendors')->where('id', $id)->first();
+        $mart = \Illuminate\Support\Facades\DB::table('vendors')->where('id', $id) ->where('vType', 'mart')->first();
+
+        if (!$mart) {
+            abort(404, 'Mart not found');
+        }
+
         $zones = \Illuminate\Support\Facades\DB::table('zone')
             ->where('publish', 1)
             ->orderBy('name', 'asc')
             ->get(['id','name']);
+        $categories = \Illuminate\Support\Facades\DB::table('mart_categories')
+            ->where('publish', 1)
+            ->orderBy('title', 'asc')
+            ->get(['id', 'title', 'publish']);
         $owner = null;
         if ($mart && !empty($mart->author)) {
             $owner = \Illuminate\Support\Facades\DB::table('users')->select('id','firstName','lastName','email','phoneNumber')->where('id', $mart->author)->first();
         }
-        return view('mart.edit', compact('id', 'mart', 'zones', 'owner'));
+
+        // Convert to array for proper JSON encoding
+        $mart = (array) $mart;
+        $zones = $zones->toArray();
+        $categories = $categories->toArray();
+        if ($owner) {
+            $owner = (array) $owner;
+        }
+
+        return view('mart.edit', compact('id', 'mart', 'zones', 'categories', 'owner'));
     }
 
     public function view($id)
@@ -259,13 +277,43 @@ class MartController extends Controller
         $id = $data['id'] ?: Str::uuid()->toString();
         $data['id'] = $id;
         $data['vType'] = 'mart';
-        if (empty($data['createdAt'])) { $data['createdAt'] = Carbon::now()->toDateTimeString(); }
+        if (empty($data['createdAt'])) {
+            $data['createdAt'] = Carbon::now('Asia/Kolkata')->toDateTimeString();
+        }
 
         try {
             Vendor::updateOrCreate(['id' => $id], $data);
         } catch (\Throwable $e) {
             \Log::error('Mart store failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString(), 'data' => $data]);
             return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+        }
+
+        // 🔹 Save Story (if storyData exists)
+        if ($request->has('storyData') && !empty($request->storyData)) {
+
+            $storyData = $request->storyData;
+            $videoThumbnail = $storyData['thumbnail'] ?? '';
+            $videoUrls = $storyData['videos'] ?? [];
+
+            // Convert array into comma-separated string (fits DB varchar 255)
+            $videoUrlString = !empty($videoUrls) ? implode(',', $videoUrls) : null;
+
+            if (!empty($videoThumbnail) || !empty($videoUrlString)) {
+
+                $firestoreId = 'story_' . Str::uuid()->toString();
+
+                DB::table('story')->updateOrInsert(
+                    ['vendor_id' => $id],
+                    [
+                        'firestore_id' => $firestoreId,
+                        'vendor_id' => $id,
+                        'video_thumbnail' => $videoThumbnail,
+                        'video_url' => $videoUrlString,
+                        'created_at' => now('Asia/Kolkata'),
+                        'updated_at' => now('Asia/Kolkata')
+                    ]
+                );
+            }
         }
 
         // Link vendorID to user if provided
@@ -320,14 +368,23 @@ class MartController extends Controller
         }
 
         // Coerce createdAt
+        // Coerce createdAt
         $createdAt = $payload['createdAt'] ?? null;
+
         if ($createdAt) {
             if (is_string($createdAt)) {
-                try { $createdAt = Carbon::parse(trim($createdAt, "\" "))->toDateTimeString(); } catch (\Throwable $e) { $createdAt = Carbon::now()->toDateTimeString(); }
+                try {
+                    $createdAt = Carbon::parse(trim($createdAt, "\" "))
+                        ->timezone('Asia/Kolkata')        // 👈 convert to IST
+                        ->toDateTimeString();
+                } catch (\Throwable $e) {
+                    $createdAt = Carbon::now('Asia/Kolkata')->toDateTimeString();
+                }
             } else {
-                $createdAt = Carbon::now()->toDateTimeString();
+                $createdAt = Carbon::now('Asia/Kolkata')->toDateTimeString();
             }
         }
+
 
         return [
             'id' => $payload['id'] ?? null,

@@ -1101,10 +1101,6 @@ input[type="number"]::-webkit-inner-spin-button {
         });
     }
 
-
-
-
-
     $(document).ready(async function() {
 
         jQuery("#country_selector1").select2({
@@ -1846,19 +1842,19 @@ input[type="number"]::-webkit-inner-spin-button {
                 // Story feature disabled during migration - return empty
                 console.log('Story feature is disabled during migration');
                 // If you want to enable it later, use Laravel storage API:
-                // const response = await $.ajax({
-                //     url: '{{ route("api.upload.image") }}',
-                //     method: 'POST',
-                //     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                //     data: {
-                //         image: story_thumbnail,
-                //         folder: 'marts/story',
-                //         filename: story_thumbnail_filename || ('story_' + Date.now() + '.jpg')
-                //     }
-                // });
-                // if (response.success && response.url) {
-                //     newPhoto['storyThumbnailImage'] = response.url;
-                // }
+                 const response = await $.ajax({
+                     url: '{{ route("api.upload.image") }}',
+                     method: 'POST',
+                     headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    data: {
+                         image: story_thumbnail,
+                         folder: 'marts/story',
+                         filename: story_thumbnail_filename || ('story_' + Date.now() + '.jpg')
+                     }
+                 });
+                 if (response.success && response.url) {
+                     newPhoto['storyThumbnailImage'] = response.url;
+                 }
             }
         } catch(error) {
             console.log("ERR ===",error);
@@ -2035,86 +2031,101 @@ input[type="number"]::-webkit-inner-spin-button {
         });
     }
 
+    async function handleStoryFileSelect(evt) {
+        var f = evt.target.files[0];
+        if (!f) return false;
 
-    function handleStoryFileSelect(evt) {
-        var f=evt.target.files[0];
-        var reader=new FileReader();
-        var story_video_duration=$("#story_video_duration").val();
-        var isVideo=document.getElementById('video_file');
-        var videoValue=isVideo.value;
-        var allowedExtensions=/(\.mp4)$/i;;
+        var fileInput = document.getElementById('video_file');
+        var filePath = fileInput.value;
+        var allowedExtensions = /(\.mp4)$/i;
 
-        if(!allowedExtensions.exec(videoValue)) {
+        if (!allowedExtensions.exec(filePath)) {
             $(".error_top").show();
             $(".error_top").html("");
-            $(".error_top").append("<p>Error: Invalid video type</p>");
-            window.scrollTo(0,0);
-            isVideo.value='';
+            $(".error_top").append("<p>Error: Invalid video type. Only MP4 files are allowed.</p>");
+            window.scrollTo(0, 0);
+            fileInput.value = '';
             return false;
         }
 
-        var video=document.createElement('video');
-
-
-        video.preload='metadata';
-
-        video.onloadedmetadata=function() {
-
+        // Check video duration if needed
+        var video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = async function () {
             window.URL.revokeObjectURL(video.src);
 
-
-            if(video.duration>storevideoDuration) {
+            // Optional: Check duration limit (30 seconds default)
+            if (storevideoDuration > 0 && video.duration > storevideoDuration) {
                 $(".error_top").show();
                 $(".error_top").html("");
-                $(".error_top").append("<p>Error: Story video duration maximum allow to "+storevideoDuration+" seconds</p>");
-                window.scrollTo(0,0);
-                evt.target.value='';
+                $(".error_top").append("<p>Error: Story video duration maximum allowed is " + storevideoDuration + " seconds</p>");
+                window.scrollTo(0, 0);
+                evt.target.value = '';
                 return false;
             }
 
-            reader.onload=(function(theFile) {
-                return function(e) {
+            // Read file as base64
+            var reader = new FileReader();
+            reader.onload = async function (e) {
+                var filePayload = e.target.result;
+                var val = f.name;
+                var ext = val.split('.').pop();
+                var filename = (f.name).replace(/C:\\fakepath\\/i, '');
+                var timestamp = Number(new Date());
+                filename = filename.split('.')[0] + "_" + timestamp + '.' + ext;
 
-                    var filePayload=e.target.result;
-                    var val=f.name;
-                    var ext=val.split('.')[1];
-                    var docName=val.split('fakepath')[1];
-                    var filename=(f.name).replace(/C:\\fakepath\\/i,'')
+                try {
+                    jQuery("#uploding_story_video").text("Video is uploading...");
 
-                    var timestamp=Number(new Date());
-                    var filename=filename.split('.')[0]+"_"+timestamp+'.'+ext;
-
-                    var uploadTask=storyRef.child(filename).put(theFile);
-                    uploadTask.on('state_changed',function(snapshot) {
-
-                        var progress=(snapshot.bytesTransferred/snapshot.totalBytes)*100;
-                        console.log('Upload is '+progress+'% done');
-                        jQuery("#uploding_story_video").text("video is uploading...");
-                    },function(error) {},function() {
-                        uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
-                            jQuery("#uploding_story_video").text("Upload is completed");
-                            setTimeout(function() {
-                                jQuery("#uploding_story_video").empty();
-                            },3000);
-
-                            var nextCount=$("#story_vedios").children().length;
-                            html='<div class="col-md-3" id="story_div_'+nextCount+'">\n'+
-                                '<div class="video-inner"><video width="320px" height="240px"\n'+
-                                '                                   controls="controls">\n'+
-                                '                            <source src="'+downloadURL+'"\n'+
-                                '            type="video/mp4"></video><span class="remove-story-video" data-id="'+nextCount+'" data-img="'+downloadURL+'"><i class="fa fa-remove"></i></span></div></div>';
-
-                            jQuery("#story_vedios").append(html);
-                            story_vedios.push(downloadURL);
-                            $("#video_file").val('');
-                        });
+                    // Upload video via Laravel API
+                    const response = await $.ajax({
+                        url: '/api/upload-image',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            image: filePayload,
+                            folder: 'restaurants/story',
+                            filename: filename
+                        }
                     });
 
-                };
-            })(f);
+                    jQuery("#uploding_story_video").text("Upload completed");
+                    setTimeout(function () {
+                        jQuery("#uploding_story_video").empty();
+                    }, 3000);
+
+                    var nextCount = $("#story_vedios").children().length;
+                    var localPreview = URL.createObjectURL(f); // preview URL
+
+                    var html = `
+<div class="col-md-3" id="story_div_${nextCount}">
+    <div class="video-inner">
+        <video width="320" height="240" controls autoplay muted>
+            <source src="${localPreview}" type="video/mp4">
+        </video>
+        <span class="remove-story-video" data-id="${nextCount}" data-img="${response.url}">
+            <i class="fa fa-remove"></i>
+        </span>
+    </div>
+</div>`;
+
+                    jQuery("#story_vedios").append(html);
+                    story_vedios.push(response.url);
+                    $("#video_file").val('');
+                } catch (error) {
+                    console.error('Error uploading story video:', error);
+                    jQuery("#uploding_story_video").text("Upload failed");
+                    $(".error_top").show();
+                    $(".error_top").html("");
+                    $(".error_top").append("<p>Error uploading video: " + (error.responseJSON?.message || error.message) + "</p>");
+                    window.scrollTo(0, 0);
+                }
+            };
             reader.readAsDataURL(f);
-        }
-        video.src=URL.createObjectURL(f);
+        };
+        video.src = URL.createObjectURL(f);
     }
 
 

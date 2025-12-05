@@ -377,10 +377,38 @@
                     extend: 'collection',
                     text: '<i class="mdi mdi-cloud-download"></i> Export as',
                     className: 'btn btn-info',
+                    // buttons: [
+                    //     { extend: 'excelHtml5', text: 'Export Excel', action: function (e, dt) { exportData(dt, 'excel', fieldConfig); } },
+                    //     { extend: 'pdfHtml5', text: 'Export PDF', action: function (e, dt) { exportData(dt, 'pdf', fieldConfig); } },
+                    //     { extend: 'csvHtml5', text: 'Export CSV', action: function (e, dt) { exportData(dt, 'csv', fieldConfig); } }
+                    // ]
                     buttons: [
-                        { extend: 'excelHtml5', text: 'Export Excel', action: function (e, dt) { exportData(dt, 'excel', fieldConfig); } },
-                        { extend: 'pdfHtml5', text: 'Export PDF', action: function (e, dt) { exportData(dt, 'pdf', fieldConfig); } },
-                        { extend: 'csvHtml5', text: 'Export CSV', action: function (e, dt) { exportData(dt, 'csv', fieldConfig); } }
+                        {
+                            extend: 'excelHtml5',
+                            text: 'Export Excel',
+                            exportOptions: {
+                                columns: ':visible:not(:first-child):not(:last-child)'
+                            },
+                            title: 'mart',
+                        },
+                        {
+                            extend: 'csvHtml5',
+                            text: 'Export CSV',
+                            exportOptions: {
+                                columns: ':visible:not(:first-child):not(:last-child)'
+                            },
+                            title: 'mart',
+                        },
+                        {
+                            extend: 'pdfHtml5',
+                            text: 'Export PDF',
+                            exportOptions: {
+                                columns: ':visible:not(:first-child):not(:last-child)'
+                            },
+                            title: 'mart',
+                            orientation: 'landscape',
+                            pageSize: 'A4'
+                        }
                     ]
                 }
             ],

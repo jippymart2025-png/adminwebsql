@@ -1587,6 +1587,7 @@ class RestaurantController extends Controller
                         // Remove quotes and parse the ISO date
                         $dateStr = trim($vendor->createdAt, '"');
                         $date = new \DateTime($dateStr);
+                        $date->setTimezone(new \DateTimeZone('Asia/Kolkata'));
                         $createdAtFormatted = $date->format('M d, Y h:i A');
                     } catch (\Exception $e) {
                         $createdAtFormatted = $vendor->createdAt;
@@ -2157,6 +2158,34 @@ class RestaurantController extends Controller
                     $user->save();
                 }
             }
+
+            // Save story data if provided
+            if ($request->has('storyData') && !empty($request->storyData)) {
+                $storyData = $request->storyData;
+                $videoThumbnail = $storyData['thumbnail'] ?? '';
+                $videoUrls = $storyData['videos'] ?? [];
+
+                if (!empty($videoThumbnail) || !empty($videoUrls)) {
+
+                    // convert array to comma separated string instead of JSON
+                    $videoUrlJson = !empty($videoUrls) ? implode(',', $videoUrls) : null;
+
+                    $firestoreId = 'story_' . Str::uuid()->toString();
+
+                    DB::table('story')->updateOrInsert(
+                        ['vendor_id' => $restaurant_id],
+                        [
+                            'firestore_id' => $firestoreId,
+                            'vendor_id' => $restaurant_id,
+                            'video_thumbnail' => $videoThumbnail,
+                            'video_url' => $videoUrlJson,
+                            'created_at' => now('Asia/Kolkata'),
+                            'updated_at' => now('Asia/Kolkata')
+                        ]
+                    );
+                }
+            }
+
 
             return response()->json([
                 'success' => true,
@@ -3926,5 +3955,17 @@ class RestaurantController extends Controller
                 'message' => 'Error deleting story'
             ], 500);
         }
+    }
+    public function uploadVideo(Request $request)
+    {
+        $file = $request->file('file');
+        $folder = $request->folder ?? 'restaurants/stories/videos';
+
+        $filename = time() . '_' . $file->getClientOriginalName();
+        $path = $file->storeAs($folder, $filename, 'public');
+
+        return response()->json([
+            'url' => asset('storage/' . $path)
+        ]);
     }
 }
