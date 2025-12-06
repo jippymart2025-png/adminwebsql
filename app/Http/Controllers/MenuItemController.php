@@ -217,6 +217,7 @@ class MenuItemController extends Controller
         return response()->json(['success' => true, 'message' => $count . ' menu items deleted successfully', 'count' => $count]);
     }
 
+
     /**
      * Get all stores from vendors table (for dropdown)
      */

@@ -13,6 +13,7 @@
             </ol>
         </div>
     </div>
+
     <div class="card-body">
         <div class="error_top"></div>
         <div class="row restaurant_payout_create">
