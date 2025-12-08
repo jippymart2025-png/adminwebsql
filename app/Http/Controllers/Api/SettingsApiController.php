@@ -344,105 +344,119 @@ class SettingsApiController extends Controller
     public function mobileSettings()
     {
         try {
+            // List of required documents
             $documents = [
-                'restaurant',
-                'RestaurantNearBy',
-                'DriverNearBy',
-                'globalSettings',
-                'googleMapKey',
-                'notification_setting',
-                'privacyPolicy',
-                'termsAndConditions',
-                'walletSettings',
-                'WalletSetting',
-                'Version',
-                'story',
-                'referral_amount',
-                'placeHolderImage',
-                'emailSetting',
-                'specialDiscountOffer',
-                'DineinForRestaurant',
-                'AdminCommission',
-                'DeliveryCharge',
-                'martDeliveryCharge',
-                'PriceSettings',
-                'payment',
-                'languages',
-                'digitalProduct',
-                'driver_total_charges',
-                'CODSettings'
+                'restaurant', 'RestaurantNearBy', 'DriverNearBy', 'globalSettings', 'googleMapKey',
+                'notification_setting', 'privacyPolicy', 'termsAndConditions', 'walletSettings',
+                'WalletSetting', 'Version', 'story', 'referral_amount', 'placeHolderImage',
+                'emailSetting', 'specialDiscountOffer', 'DineinForRestaurant', 'AdminCommission',
+                'DeliveryCharge', 'martDeliveryCharge', 'PriceSettings', 'payment', 'languages',
+                'digitalProduct', 'driver_total_charges', 'CODSettings'
             ];
 
+            // Fetch once — optimized
             $settingsRows = DB::table('settings')
                 ->whereIn('document_name', $documents)
                 ->get();
 
-            $settings = [];
+            // Build final key-value config map (FAST)
+            $settings = $settingsRows
+                ->keyBy('document_name')
+                ->map(fn ($row) => $this->decodeSetting($row->fields))
+                ->toArray();
 
-            foreach ($settingsRows as $row) {
-                $decoded = $this->decodeSetting($row->fields);
-                $settings[$row->document_name] = $decoded;
-            }
+            // Shortcut variables ↓ (avoids repeated array lookups)
+            $restaurant        = $settings['restaurant']        ?? [];
+            $nearBy            = $settings['RestaurantNearBy']  ?? [];
+            $driverNearBy      = $settings['DriverNearBy']      ?? [];
+            $global            = $settings['globalSettings']    ?? [];
+            $googleMapKey      = $settings['googleMapKey']      ?? [];
+            $notification      = $settings['notification_setting'] ?? [];
+            $privacyPolicy     = $settings['privacyPolicy']     ?? [];
+            $terms             = $settings['termsAndConditions'] ?? [];
+            $version           = $settings['Version']           ?? [];
+            $story             = $settings['story']             ?? [];
+            $referral          = $settings['referral_amount']   ?? [];
+            $placeHolder       = $settings['placeHolderImage']  ?? [];
+            $special           = $settings['specialDiscountOffer'] ?? [];
+            $dinein            = $settings['DineinForRestaurant'] ?? [];
+            $wallet1           = $settings['walletSettings'] ?? [];
+            $wallet2           = $settings['WalletSetting']  ?? [];
 
+            // Resolve currency only once
             $currency = $this->resolveCurrency();
 
+            // Derived settings – optimized for speed
             $derived = [
-                'isSubscriptionModelApplied' => (bool)($settings['restaurant']['subscription_model'] ?? false),
-                'autoApproveRestaurant' => (bool)($settings['restaurant']['auto_approve_restaurant'] ?? false),
-                'radius' => $settings['RestaurantNearBy']['radios'] ?? null,
-                'driverRadios' => $settings['DriverNearBy']['driverRadios'] ?? null,
-                'distanceType' => $settings['RestaurantNearBy']['distanceType'] ?? null,
-                'isEnableAdsFeature' => (bool)($settings['globalSettings']['isEnableAdsFeature'] ?? false),
-                'isSelfDeliveryFeature' => (bool)($settings['globalSettings']['isSelfDelivery'] ?? false),
-                'themeColors' => [
-                    'app_customer_color' => $settings['globalSettings']['app_customer_color'] ?? null,
-                    'app_driver_color' => $settings['globalSettings']['app_driver_color'] ?? null,
-                    'app_restaurant_color' => $settings['globalSettings']['app_restaurant_color'] ?? null,
-                ],
-                'mapAPIKey' => $settings['googleMapKey']['key'] ?? '',
-                'placeHolderImage' => $settings['googleMapKey']['placeHolderImage'] ?? ($settings['placeHolderImage']['image'] ?? ''),
-                'senderId' => $settings['notification_setting']['projectId'] ?? '',
-                'jsonNotificationFileURL' => $settings['notification_setting']['serviceJson'] ?? '',
-                'selectedMapType' => $settings['DriverNearBy']['selectedMapType'] ?? null,
-                'mapType' => $settings['DriverNearBy']['mapType'] ?? null,
-                'privacyPolicy' => $settings['privacyPolicy']['privacy_policy'] ?? '',
-                'termsAndConditions' => $settings['termsAndConditions']['termsAndConditions'] ?? '',
-                'walletEnabled' => (bool)(
-                    $settings['walletSettings']['isEnabled']
-                    ?? $settings['WalletSetting']['isEnabled']
-                    ?? false
-                ),
-                'googlePlayLink' => $settings['Version']['googlePlayLink'] ?? '',
-                'appStoreLink' => $settings['Version']['appStoreLink'] ?? '',
-                'appVersion' => $settings['Version']['app_version'] ?? '',
-                'websiteUrl' => $settings['Version']['websiteUrl'] ?? '',
-                'storyEnable' => (bool)($settings['story']['isEnabled'] ?? false),
-                'referralAmount' => $settings['referral_amount']['referralAmount'] ?? '0',
-                'placeholderImage' => $settings['placeHolderImage']['image'] ?? '',
-                'specialDiscountOffer' => (bool)($settings['specialDiscountOffer']['isEnable'] ?? false),
-                'isEnabledForCustomer' => (bool)($settings['DineinForRestaurant']['isEnabledForCustomer'] ?? false),
-                'adminCommission' => $settings['AdminCommission'] ?? [],
-                'mailSettings' => $settings['emailSetting'] ?? [],
-                'currency' => $currency,
-            ];
+                'isSubscriptionModelApplied' => (bool)($restaurant['subscription_model'] ?? false),
+                'autoApproveRestaurant'      => (bool)($restaurant['auto_approve_restaurant'] ?? false),
 
-            $response = [
-                'documents' => $settings,
-                'derived' => $derived,
+                'radius'        => $nearBy['radios'] ?? null,
+                'driverRadios'  => $driverNearBy['driverRadios'] ?? null,
+                'distanceType'  => $nearBy['distanceType'] ?? null,
+
+                'isEnableAdsFeature'    => (bool)($global['isEnableAdsFeature'] ?? false),
+                'isSelfDeliveryFeature' => (bool)($global['isSelfDelivery'] ?? false),
+
+                'themeColors' => [
+                    'app_customer_color'   => $global['app_customer_color'] ?? null,
+                    'app_driver_color'     => $global['app_driver_color'] ?? null,
+                    'app_restaurant_color' => $global['app_restaurant_color'] ?? null,
+                ],
+
+                'mapAPIKey' => $googleMapKey['key'] ?? '',
+                'placeHolderImage' => $googleMapKey['placeHolderImage']
+                    ?? ($placeHolder['image'] ?? ''),
+
+                'senderId' => $notification['projectId'] ?? '',
+                'jsonNotificationFileURL' => $notification['serviceJson'] ?? '',
+
+                'selectedMapType' => $driverNearBy['selectedMapType'] ?? null,
+                'mapType'         => $driverNearBy['mapType'] ?? null,
+
+                'privacyPolicy'     => $privacyPolicy['privacy_policy'] ?? '',
+                'termsAndConditions'=> $terms['termsAndConditions'] ?? '',
+
+                'walletEnabled' => (bool)(
+                    $wallet1['isEnabled'] ??
+                    $wallet2['isEnabled'] ??
+                    false
+                ),
+
+                'googlePlayLink' => $version['googlePlayLink'] ?? '',
+                'appStoreLink'   => $version['appStoreLink'] ?? '',
+                'appVersion'     => $version['app_version'] ?? '',
+                'websiteUrl'     => $version['websiteUrl'] ?? '',
+
+                'storyEnable' => (bool)($story['isEnabled'] ?? false),
+
+                'referralAmount' => $referral['referralAmount'] ?? '0',
+                'placeholderImage' => $placeHolder['image'] ?? '',
+
+                'specialDiscountOffer' => (bool)($special['isEnable'] ?? false),
+                'isEnabledForCustomer' => (bool)($dinein['isEnabledForCustomer'] ?? false),
+
+                'adminCommission' => $settings['AdminCommission'] ?? [],
+                'mailSettings'    => $settings['emailSetting']   ?? [],
+
+                'currency' => $currency,
             ];
 
             return response()->json([
                 'success' => true,
-                'data' => $response,
+                'data' => [
+                    'documents' => $settings,
+                    'derived'   => $derived,
+                ]
             ]);
+
         } catch (\Throwable $e) {
-            Log::error('Error building mobile settings payload: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
+
+            Log::error('Error in mobileSettings: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to fetch settings at the moment.',
+                'message' => 'Unable to fetch settings right now.'
             ], 500);
         }
     }

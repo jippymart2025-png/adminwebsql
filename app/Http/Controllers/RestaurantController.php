@@ -2378,53 +2378,53 @@ class RestaurantController extends Controller
     /**
      * Apply global open/close status to restaurants in a given zone (MySQL).
      */
-    public function updateGlobalStatus(Request $request)
-    {
-        $validated = $request->validate([
-            'is_open' => 'required|boolean',
-            'zone_id' => 'nullable|string',
-        ]);
+        public function updateGlobalStatus(Request $request)
+        {
+            $validated = $request->validate([
+                'is_open' => 'required|boolean',
+                'zone_id' => 'nullable|string',
+            ]);
 
-        $zoneId = $validated['zone_id'] ?? $request->input('zoneId');
-        if ($zoneId !== null && $zoneId !== '') {
-            $zoneId = trim((string) $zoneId);
-        } else {
-            $zoneId = null;
-        }
-
-        try {
-            $status = $this->toBoolInt($validated['is_open']);
-
-            $query = Vendor::query();
-            if ($zoneId) {
-                $query->where('zoneId', $zoneId);
+            $zoneId = $validated['zone_id'] ?? $request->input('zoneId');
+            if ($zoneId !== null && $zoneId !== '') {
+                $zoneId = trim((string) $zoneId);
+            } else {
+                $zoneId = null;
             }
 
-            $updatedCount = $query->update([
-                'isOpen' => $status,
-                'reststatus' => $status,
-            ]);
+            try {
+                $status = $this->toBoolInt($validated['is_open']);
 
-            return response()->json([
-                'success' => true,
-                'updated' => $updatedCount,
-                'is_open' => (bool) $status,
-                'zone_id' => $zoneId,
-                'scope' => $zoneId ? 'zone' : 'all',
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Error updating global restaurant status', [
-                'zone_id' => $zoneId,
-                'is_open' => $validated['is_open'],
-                'error' => $e->getMessage(),
-            ]);
+                $query = Vendor::query();
+                if ($zoneId) {
+                    $query->where('zoneId', $zoneId);
+                }
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Unable to update restaurants. Please try again later.',
-            ], 500);
+                $updatedCount = $query->update([
+                    'isOpen' => $status,
+                    'reststatus' => $status,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'updated' => $updatedCount,
+                    'is_open' => (bool) $status,
+                    'zone_id' => $zoneId,
+                    'scope' => $zoneId ? 'zone' : 'all',
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Error updating global restaurant status', [
+                    'zone_id' => $zoneId,
+                    'is_open' => $validated['is_open'],
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to update restaurants. Please try again later.',
+                ], 500);
+            }
         }
-    }
 
     /**
      * Get single restaurant data by ID
@@ -3852,7 +3852,7 @@ class RestaurantController extends Controller
             // Detect if it's a video or image based on data URL prefix
             $isVideo = false;
             $fileExtension = null;
-            
+
             // Check for video data URL prefix (e.g., data:video/mp4;base64,)
             if (preg_match('/^data:video\/([a-z0-9]+);base64,/', $base64Data, $matches)) {
                 $isVideo = true;
