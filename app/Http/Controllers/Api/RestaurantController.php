@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class RestaurantController extends Controller
 {
@@ -132,11 +133,15 @@ class RestaurantController extends Controller
             return [$r['isOpen'] ? 0 : 1, $index];
         })->values();
 
+        // Count restaurants where isOpen is true
+        $openCount = $sortedData->filter(fn ($restaurant) => isset($restaurant['isOpen']) && $restaurant['isOpen'] === true)->count();
+
             return response()->json([
                 'success' => true,
                 'filter' => $filter,
                 'availableFilters' => ['distance','rating'],
                 'count' => $sortedData->count(),
+                'openCount' => $openCount,
                 'data' => $sortedData,
             ]);
 
@@ -254,7 +259,10 @@ class RestaurantController extends Controller
             'distance' => round($restaurant->distance ?? 0, 2),
             'vType' => $restaurant->vType ?? 'restaurant',
             'isActive' => (bool) ($restaurant->publish ?? true), // Using publish field (NULL/TRUE = active)
-            'isOpen' => (bool) ($restaurant->isOpen ?? false),
+            'isOpen' => $this->calculateActualIsOpen(
+                $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                $restaurant->workingHours ? json_decode($restaurant->workingHours, true) : []
+            ),
             'subscriptionPlan' => $subscriptionPlan,
             'author' => $restaurant->author,
             'subscriptionTotalOrders' => $subscriptionTotalOrders,
@@ -325,10 +333,14 @@ class RestaurantController extends Controller
                 return $this->formatRestaurantResponse($restaurant);
             });
 
+            // Count restaurants where isOpen is true
+            $openCount = $data->filter(fn ($restaurant) => isset($restaurant['isOpen']) && $restaurant['isOpen'] === true)->count();
+
             return response()->json([
                 'success' => true,
                 'data' => $data,
-                'count' => $data->count()
+                'count' => $data->count(),
+                'openCount' => $openCount
             ]);
 
         } catch (\Exception $e) {
@@ -397,10 +409,15 @@ class RestaurantController extends Controller
             $data = $restaurants->map(function ($restaurant) {
                 return $this->formatRestaurantResponse($restaurant);
             });
+            
+            // Count restaurants where isOpen is true
+            $openCount = $data->filter(fn ($restaurant) => isset($restaurant['isOpen']) && $restaurant['isOpen'] === true)->count();
+            
             return response()->json([
                 'success' => true,
                 'data' => $data,
-                'count' => $data->count()
+                'count' => $data->count(),
+                'openCount' => $openCount
             ]);
 
         } catch (\Exception $e) {
@@ -414,6 +431,125 @@ class RestaurantController extends Controller
         }
     }
 
+    /**
+     * Calculate actual isOpen status based on isOpen flag and working hours
+     * 
+     * Logic:
+     * 1. If working hours are DISABLED (empty/null or all timeslots empty) → always return false (closed)
+     * 2. If working hours are ENABLED:
+     *    - If isOpen flag is false → return false (closed)
+     *    - If isOpen flag is true → check working hours:
+     *      - If current time is within working hours → return true (open)
+     *      - If current time is outside working hours → return false (closed)
+     * 
+     * @param bool $isOpenFlag The isOpen flag from database
+     * @param array|null $workingHours The working hours array from database
+     * @return bool
+     */
+    protected function calculateActualIsOpen(bool $isOpenFlag, ?array $workingHours): bool
+    {
+        // Check if working hours are disabled (empty/null or all timeslots are empty)
+        $hasValidWorkingHours = false;
+        if (!empty($workingHours) && is_array($workingHours)) {
+            foreach ($workingHours as $daySchedule) {
+                if (isset($daySchedule['timeslot']) && is_array($daySchedule['timeslot']) && !empty($daySchedule['timeslot'])) {
+                    // Check if at least one timeslot has valid from/to
+                    foreach ($daySchedule['timeslot'] as $timeslot) {
+                        $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                        $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                        if ($fromRaw !== '' && $toRaw !== '') {
+                            $hasValidWorkingHours = true;
+                            break 2; // Break out of both loops
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rule 3 & 4: If working hours are disabled (no valid timeslots), restaurant is always closed
+        if (!$hasValidWorkingHours) {
+            return false;
+        }
+
+        // Rule 2: If working hours enabled but isOpen flag is false, restaurant is closed
+        if (!$isOpenFlag) {
+            return false;
+        }
+
+        // Rule 1: Working hours enabled and isOpen flag is true - check if within working hours
+        // Get current day and time in app timezone
+        $tz = config('app.timezone') ?: 'UTC';
+        $now = Carbon::now($tz);
+        $currentDay = $now->format('l'); // e.g., Monday
+        $currentMinutes = (int)$now->format('H') * 60 + (int)$now->format('i');
+
+        // Check if current time is within any timeslot for today
+        foreach ($workingHours as $daySchedule) {
+            if (!isset($daySchedule['day']) || $daySchedule['day'] !== $currentDay) {
+                continue;
+            }
+
+            if (!isset($daySchedule['timeslot']) || !is_array($daySchedule['timeslot']) || empty($daySchedule['timeslot'])) {
+                continue;
+            }
+
+            // Check each timeslot for today
+            foreach ($daySchedule['timeslot'] as $timeslot) {
+                $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                if ($fromRaw === '' || $toRaw === '') {
+                    continue;
+                }
+
+                $fromMinutes = $this->parseTimeToMinutes($fromRaw, $tz);
+                $toMinutes = $this->parseTimeToMinutes($toRaw, $tz);
+
+                if ($fromMinutes === null || $toMinutes === null) {
+                    continue; // skip invalid time formats
+                }
+
+                if ($currentMinutes >= $fromMinutes && $currentMinutes <= $toMinutes) {
+                    return true; // Within working hours - restaurant is open
+                }
+            }
+        }
+
+        // Not within working hours - restaurant is closed
+        return false;
+    }
+
+    /**
+     * Parse a time string (supports "H:i" or "h:i A") into minutes since midnight.
+     * Expects 24-hour format "HH:MM" with leading zeros (e.g., "09:30", "11:30", "22:00").
+     */
+    protected function parseTimeToMinutes(string $timeString, string $timezone = 'UTC'): ?int
+    {
+        $timeString = trim($timeString);
+        if ($timeString === '') {
+            return null;
+        }
+
+        $formats = ['H:i', 'G:i', 'h:i A', 'g:i A', 'H:i:s', 'h:i:s A'];
+
+        foreach ($formats as $format) {
+            try {
+                $dt = Carbon::createFromFormat($format, $timeString, $timezone);
+                if ($dt !== false) {
+                    return $dt->format('H') * 60 + (int)$dt->format('i');
+                }
+            } catch (\Exception $e) {
+                // try next format
+            }
+        }
+
+        // Fallback: try Carbon::parse (may be less strict)
+        try {
+            $dt = Carbon::parse($timeString, $timezone);
+            return $dt->format('H') * 60 + (int)$dt->format('i');
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
 
 }
 

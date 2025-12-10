@@ -667,9 +667,13 @@ class FirestoreBridgeController extends Controller
         $vendors = $query->limit($limit)->get()
             ->map(fn ($row) => $this->mapVendorRow((array) $row));
 
+        // Count vendors where isOpen is true
+        $openCount = $vendors->filter(fn ($vendor) => isset($vendor['isOpen']) && $vendor['isOpen'] === true)->count();
+
         return $this->success([
             'vendors' => $vendors,
             'count' => $vendors->count(),
+            'openCount' => $openCount,
         ]);
     }
 
@@ -836,7 +840,12 @@ class FirestoreBridgeController extends Controller
         }
 
         $row['publish'] = $this->coerceBoolean($row['publish'] ?? null);
-        $row['isOpen'] = $this->coerceBoolean($row['isOpen'] ?? null);
+        
+        // Calculate actual isOpen status using two-tier logic (manual override + working hours)
+        $isOpenFlag = $this->coerceBoolean($row['isOpen'] ?? null) ?? false;
+        $workingHours = $row['workingHours'] ?? null;
+        $row['isOpen'] = $this->calculateActualIsOpen($isOpenFlag, $workingHours);
+        
         $row['enabledDelivery'] = $this->coerceBoolean($row['enabledDelivery'] ?? null);
         $row['isSelfDelivery'] = $this->coerceBoolean($row['isSelfDelivery'] ?? null);
 
@@ -1057,6 +1066,118 @@ class FirestoreBridgeController extends Controller
         }
 
         return response()->json($payload, $status);
+    }
+
+    /**
+     * Calculate actual isOpen status using two-tier logic:
+     * 1. If working hours are disabled (no valid timeslots) → always closed
+     * 2. If isOpen flag is false → closed (manual override)
+     * 3. If isOpen flag is true AND within working hours → open
+     * 4. If isOpen flag is true BUT outside working hours → closed
+     */
+    protected function calculateActualIsOpen(bool $isOpenFlag, $workingHours): bool
+    {
+        // Check if working hours are disabled (empty/null or all timeslots are empty)
+        $hasValidWorkingHours = false;
+        if (!empty($workingHours) && is_array($workingHours)) {
+            foreach ($workingHours as $daySchedule) {
+                if (isset($daySchedule['timeslot']) && is_array($daySchedule['timeslot']) && !empty($daySchedule['timeslot'])) {
+                    // Check if at least one timeslot has valid from/to
+                    foreach ($daySchedule['timeslot'] as $timeslot) {
+                        $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                        $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                        if ($fromRaw !== '' && $toRaw !== '') {
+                            $hasValidWorkingHours = true;
+                            break 2; // Break out of both loops
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rule 3 & 4: If working hours are disabled (no valid timeslots), restaurant is always closed
+        if (!$hasValidWorkingHours) {
+            return false;
+        }
+
+        // Rule 2: If working hours enabled but isOpen flag is false, restaurant is closed
+        if (!$isOpenFlag) {
+            return false;
+        }
+
+        // Rule 1: Working hours enabled and isOpen flag is true - check if within working hours
+        // Get current day and time in app timezone
+        $tz = config('app.timezone') ?: 'UTC';
+        $now = Carbon::now($tz);
+        $currentDay = $now->format('l'); // e.g., Monday
+        $currentMinutes = (int)$now->format('H') * 60 + (int)$now->format('i');
+
+        // Check if current time is within any timeslot for today
+        foreach ($workingHours as $daySchedule) {
+            if (!isset($daySchedule['day']) || $daySchedule['day'] !== $currentDay) {
+                continue;
+            }
+
+            if (!isset($daySchedule['timeslot']) || !is_array($daySchedule['timeslot']) || empty($daySchedule['timeslot'])) {
+                continue;
+            }
+
+            // Check each timeslot for today
+            foreach ($daySchedule['timeslot'] as $timeslot) {
+                $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                if ($fromRaw === '' || $toRaw === '') {
+                    continue;
+                }
+
+                $fromMinutes = $this->parseTimeToMinutes($fromRaw, $tz);
+                $toMinutes = $this->parseTimeToMinutes($toRaw, $tz);
+
+                if ($fromMinutes === null || $toMinutes === null) {
+                    continue; // skip invalid time formats
+                }
+
+                if ($currentMinutes >= $fromMinutes && $currentMinutes <= $toMinutes) {
+                    return true; // Within working hours - restaurant is open
+                }
+            }
+        }
+
+        // Not within working hours - restaurant is closed
+        return false;
+    }
+
+    /**
+     * Parse a time string (supports "H:i" or "h:i A") into minutes since midnight.
+     * Expects 24-hour format "HH:MM" with leading zeros (e.g., "09:30", "11:30", "22:00").
+     */
+    protected function parseTimeToMinutes(string $timeString, string $timezone = 'UTC'): ?int
+    {
+        $timeString = trim($timeString);
+        if ($timeString === '') {
+            return null;
+        }
+
+        $formats = ['H:i', 'G:i', 'h:i A', 'g:i A', 'H:i:s', 'h:i:s A'];
+
+        foreach ($formats as $format) {
+            try {
+                $dt = Carbon::createFromFormat($format, $timeString, $timezone);
+                if ($dt !== false) {
+                    return $dt->format('H') * 60 + (int)$dt->format('i');
+                }
+            } catch (\Exception $e) {
+                // try next format
+            }
+        }
+
+        // Fallback: try Carbon::parse (may be less strict)
+        try {
+            $dt = Carbon::parse($timeString, $timezone);
+            return $dt->format('H') * 60 + (int)$dt->format('i');
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public function getLatestOrderInRange()
