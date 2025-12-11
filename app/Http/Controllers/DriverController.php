@@ -267,6 +267,7 @@ class DriverController extends Controller
         }
     }
 
+
     /**
      * Get single driver data by ID (SQL)
      */
