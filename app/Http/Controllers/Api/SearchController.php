@@ -162,7 +162,10 @@ class SearchController extends Controller
                 'isBestSeller','isFeature'
             ]);
 
-            $query = DB::table('mart_items');
+            $query = DB::table('mart_items')->where('publish', 1);
+
+//            $query->where('isAvailable', 1);
+
 
             // --------------------------------------------------
             // SEARCH (FIXED → removed keywords column)

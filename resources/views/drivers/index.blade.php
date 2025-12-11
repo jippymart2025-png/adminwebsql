@@ -89,6 +89,7 @@
                                             <th>{{trans('lang.email')}}</th>
                                             <th>{{trans('lang.phone_number')}}</th>
                                             <th>{{trans('lang.date')}}</th>
+                                            <th>{{trans('lang.zone')}}</th>
                                             <th>{{trans('lang.document_plural')}}</th>
                                             <th>{{trans('lang.driver_active')}}</th>
                                             <th>{{trans('lang.driver_online')}}</th>
@@ -258,6 +259,7 @@
 
                                 // Format date from SQL response
                                 var createdAt = childData.createdAt || '';
+                                var zoneName = childData.zone_name || childData.zone || '---';
 
                                 var driverImage=childData.profilePictureURL == '' || childData.profilePictureURL == null ? '<img alt="" width="100%" style="width:70px;height:70px;" src="' + placeholderImage + '" alt="image">' : '<img onerror="this.onerror=null;this.src=\'' + placeholderImage + '\'" alt="" width="100%" style="width:70px;height:70px;" src="' + childData.profilePictureURL + '" alt="image">'
                                 var shortedEmail = shortEmail(childData.email || '');
@@ -269,6 +271,7 @@
                                     shortedEmail,
                                     childData.phoneNumber? childData.phoneNumber:' ',
                                     createdAt,
+                                    zoneName,
                                     '<a href="'+document_list_view+'"><i class="fa fa-file"></i></a>',
                                     isActive? '<label class="switch"><input type="checkbox" checked id="'+id+'" name="isActive"><span class="slider round"></span></label>':'<label class="switch"><input type="checkbox" id="'+id+'" name="isActive"><span class="slider round"></span></label>',
                                     childData.isActive? '<label class="switch"><input type="checkbox" checked id="'+id+'" name="isOnline"><span class="slider round"></span></label>':'<label class="switch"><input type="checkbox" id="'+id+'" name="isOnline"><span class="slider round"></span></label>',
@@ -316,7 +319,7 @@
                             return data;
                         }
                     },
-                    {orderable: false,targets: (checkDeletePermission)? [0,5,6,7,8,9,10]:[4,5,6,7,8,9]},
+                    {orderable: false,targets: (checkDeletePermission)? [0,5,6,7,8,9,10,11]:[4,5,6,7,8,9,10]},
                 ],
                 "language": {
                     "zeroRecords": "{{trans("lang.no_record_found")}}",
