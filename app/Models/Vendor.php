@@ -32,7 +32,8 @@ class Vendor extends Model
         'isOpen',
         'author',
         'vType',
-        'adminCommission'
+        'adminCommission',
+        'workingHours'
     ];
 
     protected $casts = [

@@ -1530,15 +1530,70 @@ class RestaurantController extends Controller
             // Store zone sort preference for later
             $zoneSort = $request->input('zone_sort', '');
 
-            // Apply date range filter
+            // Date range filter (supports presets: last_24_hours, last_week, last_month, custom, all_orders)
             // The createdAt field is stored as JSON string like "2025-10-16T07:13:41.487000Z"
             // We need to strip quotes and compare
-            if ($request->has('start_date') && $request->has('end_date')) {
-                $startDate = date('Y-m-d', strtotime($request->start_date));
-                $endDate = date('Y-m-d', strtotime($request->end_date));
-
-                $query->whereRaw("DATE(REPLACE(REPLACE(createdAt, '\"', ''), 'T', ' ')) BETWEEN ? AND ?",
-                    [$startDate, $endDate]);
+            $dateRange = $request->input('date_range', '');
+            $startDate = $request->input('start_date', '');
+            $endDate = $request->input('end_date', '');
+            
+            \Log::info('📅 Vendor date filter request:', [
+                'date_range' => $dateRange,
+                'start_date' => $startDate,
+                'end_date' => $endDate
+            ]);
+            
+            // Handle date range presets first
+            if ($dateRange === 'last_24_hours') {
+                // For last 24 hours, compare datetime (need to handle microseconds and Z timezone)
+                $startDateTime = Carbon::now()->subDay()->format('Y-m-d H:i:s');
+                $endDateTime = Carbon::now()->format('Y-m-d H:i:s');
+                // Extract date and time part (first 19 chars: YYYY-MM-DD HH:MM:SS) for comparison
+                // Remove quotes, replace T with space, then take first 19 chars to ignore microseconds and Z
+                $query->whereRaw("SUBSTRING(REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' '), 1, 19) >= ? AND SUBSTRING(REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' '), 1, 19) <= ?",
+                    [$startDateTime, $endDateTime]);
+                \Log::info('📅 Applied last_24_hours filter:', ['start' => $startDateTime, 'end' => $endDateTime]);
+            } elseif ($dateRange === 'last_week') {
+                // For week/month, extract date part (first 10 chars: YYYY-MM-DD) for comparison
+                $startDateFormatted = Carbon::now()->subWeek()->startOfDay()->format('Y-m-d');
+                $endDateFormatted = Carbon::now()->endOfDay()->format('Y-m-d');
+                // Extract date part: first 10 characters after removing quotes
+                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                    [$startDateFormatted, $endDateFormatted]);
+                \Log::info('📅 Applied last_week filter:', ['start' => $startDateFormatted, 'end' => $endDateFormatted]);
+            } elseif ($dateRange === 'last_month') {
+                $startDateFormatted = Carbon::now()->subMonth()->startOfDay()->format('Y-m-d');
+                $endDateFormatted = Carbon::now()->endOfDay()->format('Y-m-d');
+                // Extract date part: first 10 characters after removing quotes
+                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                    [$startDateFormatted, $endDateFormatted]);
+                \Log::info('📅 Applied last_month filter:', ['start' => $startDateFormatted, 'end' => $endDateFormatted]);
+            } elseif ($dateRange === 'all_orders') {
+                // Show all vendors - skip date filtering entirely
+                \Log::info('📅 All vendors selected - no date filter applied');
+                // Do nothing - no date filter applied
+            } elseif ($dateRange === 'custom' && !empty($startDate) && !empty($endDate)) {
+                // Custom range - use provided dates
+                $startDateFormatted = Carbon::parse($startDate)->startOfDay()->format('Y-m-d');
+                $endDateFormatted = Carbon::parse($endDate)->endOfDay()->format('Y-m-d');
+                // Extract date part: first 10 characters after removing quotes
+                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                    [$startDateFormatted, $endDateFormatted]);
+                \Log::info('📅 Applied custom range filter:', ['start' => $startDateFormatted, 'end' => $endDateFormatted]);
+            } elseif (!empty($startDate) && !empty($endDate)) {
+                // Legacy support: if dates provided without date_range, use them
+                $startDateFormatted = Carbon::parse($startDate)->startOfDay()->format('Y-m-d');
+                $endDateFormatted = Carbon::parse($endDate)->endOfDay()->format('Y-m-d');
+                // Extract date part: first 10 characters after removing quotes
+                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                    [$startDateFormatted, $endDateFormatted]);
+                \Log::info('📅 Applied legacy date filter:', ['start' => $startDateFormatted, 'end' => $endDateFormatted]);
+            } else {
+                // No date range selected - default to today only
+                $today = Carbon::today()->format('Y-m-d');
+                // Extract date part: first 10 characters after removing quotes
+                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) = ?", [$today]);
+                \Log::info('📅 No date range - defaulting to today:', ['today' => $today]);
             }
 
             // Get total count before applying search
@@ -2337,7 +2392,11 @@ class RestaurantController extends Controller
                     'categoryTitle' => $restaurant->categoryTitle ? json_decode($restaurant->categoryTitle, true) : [],
                     'reststatus' => $restaurant->reststatus == 1 || $restaurant->reststatus === 'true' || $restaurant->reststatus === true,
                     'isActive' => $restaurant->reststatus == 1 || $restaurant->reststatus === 'true' || $restaurant->reststatus === true,
-                    'isOpen' => $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                    // Calculate actual isOpen status based on isOpen flag + working hours
+                    'isOpen' => $this->calculateActualIsOpen(
+                        $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                        $restaurant->workingHours ? json_decode($restaurant->workingHours, true) : []
+                    ),
                     'reviewsCount' => $restaurant->reviewsCount ?? 0,
                     'reviewsSum' => $restaurant->reviewsSum ?? 0,
                     'createdAt' => $createdAtFormatted,
@@ -2376,55 +2435,123 @@ class RestaurantController extends Controller
     }
 
     /**
-     * Apply global open/close status to restaurants in a given zone (MySQL).
+     * Apply global open/close status to restaurants (MySQL).
+     * Supports filtering by zone_id and/or restaurant IDs.
+     * Uses batch updates in chunks of 500 for performance.
      */
-        public function updateGlobalStatus(Request $request)
-        {
-            $validated = $request->validate([
-                'is_open' => 'required|boolean',
-                'zone_id' => 'nullable|string',
-            ]);
+    public function updateGlobalStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'is_open' => 'required|boolean',
+            'zone_id' => 'nullable|string',
+            'restaurant_ids' => 'nullable|array',
+            'restaurant_ids.*' => 'string',
+        ]);
 
-            $zoneId = $validated['zone_id'] ?? $request->input('zoneId');
-            if ($zoneId !== null && $zoneId !== '') {
-                $zoneId = trim((string) $zoneId);
-            } else {
-                $zoneId = null;
+        $zoneId = $validated['zone_id'] ?? $request->input('zoneId');
+        if ($zoneId !== null && $zoneId !== '') {
+            $zoneId = trim((string) $zoneId);
+        } else {
+            $zoneId = null;
+        }
+
+        $restaurantIds = $validated['restaurant_ids'] ?? $request->input('restaurant_ids', []);
+        if (!is_array($restaurantIds)) {
+            $restaurantIds = [];
+        }
+
+        try {
+            $status = $this->toBoolInt($validated['is_open']);
+
+            // Build base query
+            $query = \DB::table('vendors');
+
+            // Apply filters
+            if ($zoneId) {
+                $query->where('zoneId', $zoneId);
             }
 
-            try {
-                $status = $this->toBoolInt($validated['is_open']);
+            if (!empty($restaurantIds)) {
+                $query->whereIn('id', $restaurantIds);
+            }
 
-                $query = Vendor::query();
-                if ($zoneId) {
-                    $query->where('zoneId', $zoneId);
+            // Get total count before updates
+            $totalCount = $query->count();
+
+            if ($totalCount === 0) {
+                return response()->json([
+                    'success' => true,
+                    'updated' => 0,
+                    'is_open' => (bool) $status,
+                    'zone_id' => $zoneId,
+                    'restaurant_ids' => $restaurantIds,
+                    'scope' => $zoneId ? 'zone' : (!empty($restaurantIds) ? 'selected' : 'all'),
+                    'message' => 'No restaurants found matching the criteria.',
+                ]);
+            }
+
+            // Use transaction for data integrity
+            \DB::beginTransaction();
+
+            try {
+                $updatedCount = 0;
+                $chunkSize = 500;
+
+                // Get all IDs to update in chunks
+                $vendorIds = $query->pluck('id')->toArray();
+
+                // Process in chunks of 500
+                $chunks = array_chunk($vendorIds, $chunkSize);
+
+                foreach ($chunks as $chunk) {
+                    // Update isOpen (existing column) and reststatus
+                    $chunkUpdated = \DB::table('vendors')
+                        ->whereIn('id', $chunk)
+                        ->update([
+                            'isOpen' => $status,
+                            'reststatus' => $status,
+                        ]);
+
+                    $updatedCount += $chunkUpdated;
                 }
 
-                $updatedCount = $query->update([
-                    'isOpen' => $status,
-                    'reststatus' => $status,
-                ]);
+                \DB::commit();
 
                 return response()->json([
                     'success' => true,
                     'updated' => $updatedCount,
                     'is_open' => (bool) $status,
                     'zone_id' => $zoneId,
-                    'scope' => $zoneId ? 'zone' : 'all',
+                    'restaurant_ids' => $restaurantIds,
+                    'scope' => $zoneId ? 'zone' : (!empty($restaurantIds) ? 'selected' : 'all'),
+                    'message' => "Successfully updated {$updatedCount} restaurant(s).",
                 ]);
             } catch (\Exception $e) {
-                \Log::error('Error updating global restaurant status', [
-                    'zone_id' => $zoneId,
-                    'is_open' => $validated['is_open'],
-                    'error' => $e->getMessage(),
-                ]);
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unable to update restaurants. Please try again later.',
-                ], 500);
+                \DB::rollBack();
+                throw $e;
             }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Error updating global restaurant status', [
+                'zone_id' => $zoneId,
+                'restaurant_ids' => $restaurantIds,
+                'is_open' => $validated['is_open'] ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to update restaurants. Please try again later.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
+    }
 
     /**
      * Get single restaurant data by ID
@@ -2471,7 +2598,11 @@ class RestaurantController extends Controller
                 'cuisineTitle' => $restaurant->cuisineTitle ?? '',
                 'vendorCuisineID' => $restaurant->vendorCuisineID ?? '',
                 'reststatus' => $restaurant->reststatus == 1 || $restaurant->reststatus === 'true' || $restaurant->reststatus === true,
-                'isOpen' => $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                // Calculate actual isOpen status based on isOpen flag + working hours
+                'isOpen' => $this->calculateActualIsOpen(
+                    $restaurant->isOpen == 1 || $restaurant->isOpen === 'true' || $restaurant->isOpen === true,
+                    $restaurant->workingHours ? json_decode($restaurant->workingHours, true) : []
+                ),
                 'reviewsCount' => $restaurant->reviewsCount ?? 0,
                 'reviewsSum' => $restaurant->reviewsSum ?? 0,
                 'workingHours' => $restaurant->workingHours ? json_decode($restaurant->workingHours, true) : [],
@@ -4041,5 +4172,124 @@ class RestaurantController extends Controller
         return response()->json([
             'url' => asset('storage/' . $path)
         ]);
+    }
+
+    /**
+     * Calculate actual isOpen status based on isOpen flag and working hours
+     * 
+     * Logic:
+     * 1. If working hours are DISABLED (empty/null or all timeslots empty) → always return false (closed)
+     * 2. If working hours are ENABLED:
+     *    - If isOpen flag is false → return false (closed)
+     *    - If isOpen flag is true → check working hours:
+     *      - If current time is within working hours → return true (open)
+     *      - If current time is outside working hours → return false (closed)
+     * 
+     * @param bool $isOpenFlag The isOpen flag from database
+     * @param array|null $workingHours The working hours array from database
+     * @return bool
+     */
+    protected function calculateActualIsOpen(bool $isOpenFlag, ?array $workingHours): bool
+    {
+        // Check if working hours are disabled (empty/null or all timeslots are empty)
+        $hasValidWorkingHours = false;
+        if (!empty($workingHours) && is_array($workingHours)) {
+            foreach ($workingHours as $daySchedule) {
+                if (isset($daySchedule['timeslot']) && is_array($daySchedule['timeslot']) && !empty($daySchedule['timeslot'])) {
+                    // Check if at least one timeslot has valid from/to
+                    foreach ($daySchedule['timeslot'] as $timeslot) {
+                        $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                        $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                        if ($fromRaw !== '' && $toRaw !== '') {
+                            $hasValidWorkingHours = true;
+                            break 2; // Break out of both loops
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rule 3 & 4: If working hours are disabled (no valid timeslots), restaurant is always closed
+        if (!$hasValidWorkingHours) {
+            return false;
+        }
+
+        // Rule 2: If working hours enabled but isOpen flag is false, restaurant is closed
+        if (!$isOpenFlag) {
+            return false;
+        }
+
+        // Rule 1: Working hours enabled and isOpen flag is true - check if within working hours
+        // Get current day and time in app timezone
+        $tz = config('app.timezone') ?: 'UTC';
+        $now = Carbon::now($tz);
+        $currentDay = $now->format('l'); // e.g., Monday
+        $currentMinutes = (int)$now->format('H') * 60 + (int)$now->format('i');
+
+        // Check if current time is within any timeslot for today
+        foreach ($workingHours as $daySchedule) {
+            if (!isset($daySchedule['day']) || $daySchedule['day'] !== $currentDay) {
+                continue;
+            }
+
+            if (!isset($daySchedule['timeslot']) || !is_array($daySchedule['timeslot']) || empty($daySchedule['timeslot'])) {
+                continue;
+            }
+
+            // Check each timeslot for today
+            foreach ($daySchedule['timeslot'] as $timeslot) {
+                $fromRaw = isset($timeslot['from']) ? trim((string)$timeslot['from']) : '';
+                $toRaw = isset($timeslot['to']) ? trim((string)$timeslot['to']) : '';
+                if ($fromRaw === '' || $toRaw === '') {
+                    continue;
+                }
+
+                $fromMinutes = $this->parseTimeToMinutes($fromRaw, $tz);
+                $toMinutes = $this->parseTimeToMinutes($toRaw, $tz);
+
+                if ($fromMinutes === null || $toMinutes === null) {
+                    continue; // skip invalid time formats
+                }
+
+                if ($currentMinutes >= $fromMinutes && $currentMinutes <= $toMinutes) {
+                    return true; // Within working hours - restaurant is open
+                }
+            }
+        }
+
+        // Not within working hours - restaurant is closed
+        return false;
+    }
+
+    /**
+     * Parse a time string (supports "H:i" or "h:i A") into minutes since midnight.
+     */
+    protected function parseTimeToMinutes(string $timeString, string $timezone = 'UTC'): ?int
+    {
+        $timeString = trim($timeString);
+        if ($timeString === '') {
+            return null;
+        }
+
+        $formats = ['H:i', 'G:i', 'h:i A', 'g:i A', 'H:i:s', 'h:i:s A'];
+
+        foreach ($formats as $format) {
+            try {
+                $dt = Carbon::createFromFormat($format, $timeString, $timezone);
+                if ($dt !== false) {
+                    return $dt->format('H') * 60 + (int)$dt->format('i');
+                }
+            } catch (\Exception $e) {
+                // try next format
+            }
+        }
+
+        // Fallback: try Carbon::parse (may be less strict)
+        try {
+            $dt = Carbon::parse($timeString, $timezone);
+            return $dt->format('H') * 60 + (int)$dt->format('i');
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 }
