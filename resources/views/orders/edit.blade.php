@@ -529,20 +529,23 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        console.log('✅ Driver assigned successfully:', response);
+                        console.log('✅ Order request sent to driver:', response);
 
-                        // Log activity
+                        // Log activity - note: this is a request, not an assignment
                         if (typeof logActivity === 'function') {
-                            logActivity('orders', 'driver_assigned', 'Assigned driver ' + (response.driver_name || driverId) + ' to order #' + id);
+                            logActivity('orders', 'driver_request_sent', 'Order request sent to driver ' + (response.driver_name || driverId) + ' for order #' + id + ' (pending acceptance)');
                         }
 
-                        // Show success message and reload
-                        alert('{{ trans("lang.driver_assigned_successfully") }}');
+                        // Show success message from server (indicates it's a request, not direct assignment)
+                        var successMsg = response.message || 'Order request sent to driver. Driver will receive a notification to accept or reject.';
+                        alert(successMsg);
+                        
+                        // Reload to show updated state (order will still show no driver until driver accepts)
                         window.location.reload();
                     } else {
                         // Reset button on failure
                         $btn.prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
-                        alert('Error: ' + (response.message || 'Failed to assign driver'));
+                        alert('Error: ' + (response.message || 'Failed to send order request to driver'));
                     }
                 },
                 error: function(xhr) {
