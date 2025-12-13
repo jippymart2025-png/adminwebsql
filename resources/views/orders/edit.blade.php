@@ -514,9 +514,11 @@
 
         // Assign driver to order using Laravel route
         function assignDriverToOrder(driverId) {
-                $('#assign_driver_btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Assigning...');
+            // Disable button and show loading state
+            var $btn = $('#assign_driver_btn');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Assigning...');
 
-            console.log('🚗 Assigning driver to order:', { orderId: id, driverId: selectedDriverId });
+            console.log('🚗 Assigning driver to order:', { orderId: id, driverId: driverId });
 
             $.ajax({
                 url: '{{ route("orders.assign.driver", ":id") }}'.replace(':id', id),
@@ -534,25 +536,34 @@
                             logActivity('orders', 'driver_assigned', 'Assigned driver ' + (response.driver_name || driverId) + ' to order #' + id);
                         }
 
+                        // Show success message and reload
                         alert('{{ trans("lang.driver_assigned_successfully") }}');
                         window.location.reload();
                     } else {
+                        // Reset button on failure
+                        $btn.prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
                         alert('Error: ' + (response.message || 'Failed to assign driver'));
                     }
                 },
                 error: function(xhr) {
                     console.error('❌ Error assigning driver:', xhr);
-                    alert('{{ trans("lang.error_assigning_driver") }}');
-                },
-                complete: function() {
-                    $('#assign_driver_btn').prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
+                    // Reset button on error
+                    $btn.prop('disabled', false).html('<i class="fa fa-user-plus"></i> {{ trans("lang.assign_driver") }}');
+                    
+                    var errorMsg = '{{ trans("lang.error_assigning_driver") }}';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    alert(errorMsg);
                 }
             });
         }
 
         // Remove driver from order using Laravel route
         function removeDriverFromOrder() {
-                $('#remove_driver_btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Removing...');
+            // Disable button and show loading state
+            var $btn = $('#remove_driver_btn');
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Removing...');
 
             console.log('🚗 Removing driver from order:', { orderId: id });
 
@@ -571,21 +582,28 @@
                             logActivity('orders', 'driver_removed', 'Removed driver ' + (response.old_driver_name || response.old_driver_id) + ' from order #' + id);
                         }
 
+                        // Show success message and reload
                         alert('{{ trans("lang.driver_removed_successfully") }}');
                         window.location.reload();
                     } else {
+                        // Reset button on failure
+                        $btn.prop('disabled', false).html('<i class="fa fa-user-times"></i> {{ trans("lang.remove_driver") }}');
                         alert('Error: ' + (response.message || 'Failed to remove driver'));
                     }
                 },
                 error: function(xhr) {
                     console.error('❌ Error removing driver:', xhr);
-                    alert('{{ trans("lang.error_removing_driver") }}');
-                },
-                complete: function() {
-                    $('#remove_driver_btn').prop('disabled', false).html('<i class="fa fa-user-times"></i> {{ trans("lang.remove_driver") }}');
+                    // Reset button on error
+                    $btn.prop('disabled', false).html('<i class="fa fa-user-times"></i> {{ trans("lang.remove_driver") }}');
+                    
+                    var errorMsg = '{{ trans("lang.error_removing_driver") }}';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    alert(errorMsg);
                 }
             });
-            }
+        }
 
         $(document).ready(async function () {
             // Initialize driver assignment
