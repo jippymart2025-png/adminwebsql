@@ -81,7 +81,10 @@ class ZoneController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $zone
+                // Keep existing key for any consumers already using `data`
+                'data' => $zone,
+                // Add explicit `zone` key for frontend usage
+                'zone' => $zone
             ]);
         } catch (\Exception $e) {
             \Log::error('Error fetching zone: ' . $e->getMessage());
