@@ -1195,6 +1195,33 @@ class OrderController extends Controller
                     'driver' => json_encode($driverData)
                 ]);
 
+            // Append this order ID to the driver's orderRequestData (JSON array) without duplicating
+            try {
+                $orderRequestData = [];
+                $raw = $driver->orderRequestData ?? '[]';
+                if (is_string($raw) && trim($raw) !== '') {
+                    $decoded = json_decode($raw, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        $orderRequestData = $decoded;
+                    }
+                } elseif (is_array($raw)) {
+                    $orderRequestData = $raw;
+                }
+
+                if (!in_array($id, $orderRequestData, true)) {
+                    $orderRequestData[] = $id;
+                    DB::table('users')
+                        ->where('id', $driverId)
+                        ->update(['orderRequestData' => json_encode($orderRequestData)]);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('⚠️ Could not update driver orderRequestData on manual assign', [
+                    'order_id' => $id,
+                    'driver_id' => $driverId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
             // Log activity
             \Log::info('✅ Driver assigned to order:', [
                 'order_id' => $id,
@@ -1247,6 +1274,36 @@ class OrderController extends Controller
                     'driverID' => null,
                     'driver' => null
                 ]);
+
+            // Remove this order ID from the old driver's orderRequestData
+            if (!empty($oldDriverId)) {
+                try {
+                    $raw = DB::table('users')->where('id', $oldDriverId)->value('orderRequestData');
+                    $orderRequestData = [];
+                    if (is_string($raw) && trim($raw) !== '') {
+                        $decoded = json_decode($raw, true);
+                        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                            $orderRequestData = $decoded;
+                        }
+                    } elseif (is_array($raw)) {
+                        $orderRequestData = $raw;
+                    }
+
+                    $updated = array_values(array_filter($orderRequestData, function ($val) use ($id) {
+                        return (string) $val !== (string) $id;
+                    }));
+
+                    DB::table('users')
+                        ->where('id', $oldDriverId)
+                        ->update(['orderRequestData' => json_encode($updated)]);
+                } catch (\Throwable $e) {
+                    \Log::warning('⚠️ Could not clean orderRequestData on driver removal', [
+                        'order_id' => $id,
+                        'driver_id' => $oldDriverId,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
 
             // Log activity
             \Log::info('✅ Driver removed from order:', [
