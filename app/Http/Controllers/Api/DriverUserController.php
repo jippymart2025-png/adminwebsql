@@ -50,6 +50,7 @@ class DriverUserController extends Controller
                     'subscriptionPlanId' => $user->subscriptionPlanId ?? null,
                     'subscription_plan' => $user->subscription_plan ?? null,
                     'subscriptionExpiryDate' => $user->subscriptionExpiryDate ?? null,
+                    'fcmToken' => $user->fcmToken ?? null,
                     'carName' => $user->carName ?? null,
                     'carNumber' => $user->carNumber ?? null,
                     'carPictureURL' => $user->carPictureURL ?? null,

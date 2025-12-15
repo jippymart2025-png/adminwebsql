@@ -2173,27 +2173,23 @@ class FirestoreUtilsController extends Controller
     public function getAvalibleDrivers(Request $request)
     {
         try {
-            $vendorId = $request->input('vendorID') ?? $request->user()->vendorID ?? null;
-
-            if ($vendorId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Vendor ID is required'
-                ], 400);
-            }
+            $zoneId = $request->input('zoneId'); // optional
 
             $drivers = DB::table('users')
                 ->where('role', 'driver')
                 ->where('active', true)
                 ->where('isActive', true)
+                ->when(!is_null($zoneId), function ($query) use ($zoneId) {
+                    $query->where('zoneId', $zoneId);
+                })
                 ->get();
 
             // Decode JSON fields
             $drivers = $drivers->map(function ($driver) {
-                $driver->userBankDetails = $driver->userBankDetails ? json_decode($driver->userBankDetails) : null;
+                $driver->userBankDetails   = $driver->userBankDetails ? json_decode($driver->userBankDetails) : null;
                 $driver->inProgressOrderID = $driver->inProgressOrderID ? json_decode($driver->inProgressOrderID) : [];
-                $driver->orderRequestData = $driver->orderRequestData ? json_decode($driver->orderRequestData) : [];
-                $driver->location = $driver->location ? json_decode($driver->location) : null;
+                $driver->orderRequestData  = $driver->orderRequestData ? json_decode($driver->orderRequestData) : [];
+                $driver->location          = $driver->location ? json_decode($driver->location) : null;
                 return $driver;
             });
 
@@ -2204,12 +2200,14 @@ class FirestoreUtilsController extends Controller
 
         } catch (\Exception $e) {
             Log::error('getAvalibleDrivers error: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching drivers'
             ], 500);
         }
     }
+
 
     /**
      * Get all drivers

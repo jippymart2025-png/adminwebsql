@@ -80,49 +80,62 @@ class DriverSqlBridgeController extends FirestoreUtilsController
     /**
      * Update driver record with sanitized payload (mirrors Firestore set).
      */
+
     public function updateDriver(Request $request): JsonResponse
     {
         $request->validate([
             'id' => 'nullable|string',
             'firebase_id' => 'nullable|string',
+            'wallet_amount' => 'nullable|numeric',
+            'deliveryAmount' => 'nullable|numeric',
         ]);
 
-        // Prefer firebase_id → else use id
         $identifier = $request->firebase_id ?? $request->id;
 
-        if(!$identifier){
+        if (!$identifier) {
             return response()->json([
                 "success" => false,
                 "message" => "id or firebase_id is required"
-            ],422);
+            ], 422);
         }
 
-        // Fetch using either one
         $user = User::where('firebase_id', $identifier)->first();
 
         if (!$user) {
             return response()->json([
                 "success" => false,
                 "message" => "Driver not found"
-            ],404);
+            ], 404);
         }
 
         $columns = Schema::getColumnListing('users');
         $exclude = ['id','firebase_id','created_at','updated_at'];
-        $allowed = array_diff($columns,$exclude);
+        $allowed = array_diff($columns, $exclude);
         $incoming = $request->all();
 
-        if(isset($incoming['shippingAddress'])){
+        if (isset($incoming['shippingAddress'])) {
             $incoming['shippingAddress'] = json_encode($incoming['shippingAddress']);
         }
 
         $payload = array_intersect_key($incoming, array_flip($allowed));
 
-        if(empty($payload)){
+        /** 🔹 ADD wallet_amount */
+        if (isset($payload['wallet_amount'])) {
+            $payload['wallet_amount'] =
+                ($user->wallet_amount ?? 0) + $payload['wallet_amount'];
+        }
+
+        /** 🔹 ADD deliveryAmount */
+        if (isset($payload['deliveryAmount'])) {
+            $payload['deliveryAmount'] =
+                ($user->deliveryAmount ?? 0) + $payload['deliveryAmount'];
+        }
+
+        if (empty($payload)) {
             return response()->json([
                 "success" => false,
                 "message" => "No valid fields to update"
-            ],422);
+            ], 422);
         }
 
         $user->update($payload);
@@ -997,32 +1010,40 @@ class DriverSqlBridgeController extends FirestoreUtilsController
     public function removeOrderFromOtherDrivers(Request $request): JsonResponse
     {
         $request->validate([
-            'order_id' => 'required|string',
+            'order_ids' => 'required|array',   // <-- Receive list of order IDs
             'assigned_driver_id' => 'required|string',
         ]);
 
+        $orderIds = $request->order_ids;   // Array of IDs to remove
+
+        // Get all drivers who have orderRequestData
         $drivers = User::query()
             ->where('role', 'driver')
             ->whereNotNull('orderRequestData')
             ->get();
 
         foreach ($drivers as $driver) {
+
+            // Skip the assigned driver
             if ($driver->firebase_id === $request->assigned_driver_id) {
                 continue;
             }
 
+            // Decode their orderRequestData
             $payload = json_decode($driver->orderRequestData ?? '[]', true);
+
             if (json_last_error() !== JSON_ERROR_NONE || empty($payload)) {
                 continue;
             }
 
-            $filtered = array_values(array_filter($payload, function ($entry) use ($request) {
-                return $entry !== $request->order_id;
+            // Remove all matching order IDs
+            $filtered = array_values(array_filter($payload, function ($order) use ($orderIds) {
+                return !in_array($order, $orderIds);  // remove if exists in list
             }));
 
+            // Update only if there is a change
             if ($filtered !== $payload) {
-                User::query()
-                    ->where('id', $driver->id)
+                User::where('id', $driver->id)
                     ->update([
                         'orderRequestData' => json_encode($filtered),
                     ]);
@@ -1031,7 +1052,7 @@ class DriverSqlBridgeController extends FirestoreUtilsController
 
         return response()->json([
             'success' => true,
-            'message' => 'Order removed from other drivers',
+            'message' => 'Order(s) removed from all other drivers successfully',
         ]);
     }
 

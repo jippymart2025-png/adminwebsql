@@ -145,8 +145,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/mobile/chat/driver/messages', [MobileSqlBridgeController::class, 'addDriverChat']);
 
 });
-Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee']);
-Route::get('/mobile/orders/{orderId}/billing/to-pay', [OrderSupportController::class, 'fetchOrderToPay']);
+Route::get('/mobile/orders/{orderId}/billing/surge-fee', [OrderSupportController::class, 'fetchOrderSurgeFee'])
+    ->middleware('throttle:1000,1');
+Route::get('/mobile/orders/{orderId}/billing/to-pay', [OrderSupportController::class, 'fetchOrderToPay'])
+    ->withoutMiddleware(['throttle:api']);
+
 
 
 // Restaurant/Vendor API routes
@@ -200,12 +203,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
 });
 
-Route::middleware('auth:sanctum')->group(function () {
 // Coupons API routes (Public - no auth required)
     Route::prefix('coupons')->group(function () {
         Route::get('/{type}', [CouponApiController::class, 'byType']);
     });
-});
+
 // User Profile API routes (Customers only)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users/profile/{firebase_id}', [UserProfileController::class, 'show'])
@@ -430,7 +432,68 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::post('/driver/login', [DriverControllerLogin::class, 'driverLogin']);
 Route::post('/driver/signup', [DriverControllerLogin::class, 'driverSignup']);
-Route::get('/users/{firebase_id}', [DriverUserController::class, 'getUserProfile']);
+
+// Temporary debug route - REMOVE AFTER FIXING PASSWORD ISSUE
+Route::post('/driver/debug-password', function(Request $request) {
+    $request->validate(['email' => 'required|email']);
+    $user = \App\Models\User::where('email', $request->email)->first();
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'User not found'], 404);
+    }
+    return response()->json([
+        'success' => true,
+        'email' => $user->email,
+        'role' => $user->role,
+        'role_raw' => var_export($user->role, true),
+        'role_length' => strlen($user->role ?? ''),
+        'active' => $user->active,
+        'password_hash_length' => strlen($user->password ?? ''),
+        'password_hash_preview' => substr($user->password ?? '', 0, 20) . '...',
+        'is_bcrypt' => strpos($user->password ?? '', '$2y$') === 0 || strpos($user->password ?? '', '$2a$') === 0,
+        'password_empty' => empty($user->password),
+    ]);
+});
+
+// Temporary password reset route - REMOVE AFTER FIXING PASSWORD ISSUE
+Route::post('/driver/reset-password-debug', function(Request $request) {
+    $request->validate([
+        'email' => 'required|email',
+        'new_password' => 'required|min:6'
+    ]);
+    $user = \App\Models\User::where('email', $request->email)->first();
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'User not found'], 404);
+    }
+    $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
+    $user->save();
+    return response()->json([
+        'success' => true,
+        'message' => 'Password reset successfully',
+        'email' => $user->email,
+    ]);
+});
+
+// Temporary route to fix user role - REMOVE AFTER FIXING
+Route::post('/driver/fix-role-debug', function(Request $request) {
+    $request->validate(['email' => 'required|email']);
+    $user = \App\Models\User::where('email', $request->email)->first();
+    if (!$user) {
+        return response()->json(['success' => false, 'message' => 'User not found'], 404);
+    }
+    $oldRole = $user->role;
+    $user->role = 'driver';
+    $user->save();
+    return response()->json([
+        'success' => true,
+        'message' => 'Role updated to driver',
+        'email' => $user->email,
+        'old_role' => $oldRole,
+        'new_role' => $user->role,
+    ]);
+});
+Route::get('/users/{firebase_id}', [DriverUserController::class, 'getUserProfile'])
+    ->withoutMiddleware(['throttle:api']);
+
 
 
 
@@ -442,7 +505,8 @@ Route::post('/restaurant/signup', [restaurantControllerLogin::class, 'restaurant
 Route::get('/restaurant/users/{firebase_id}', [restaurantUserController::class, 'getUserProfile'])
     ->withoutMiddleware(['throttle:api']);
 Route::post('/restaurant/update-user-wallet', [WalletTransactionController::class, 'updateUserWallet']);
-Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateUser']);
+Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateUser'])
+    ->withoutMiddleware(['throttle:api']);
 // Route::post('/restaurant/updateUser', [restaurantUserController::class, 'updateDriverUser']);
 Route::post('/restaurant/withdraw', [WalletTransactionController::class, 'withdrawWalletAmount']);
 Route::get('/onboarding/{type}', [RestaurantAppSettingController::class, 'getOnBoardingList']);
@@ -470,7 +534,8 @@ Route::get('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'ge
 Route::get('/restaurant/orders', [FirestoreUtilsController::class, 'getAllOrder'])
     ->withoutMiddleware(['throttle:api']);
 
-Route::post('/restaurant/orders', [FirestoreUtilsController::class, 'setOrder']);
+Route::post('/restaurant/orders', [FirestoreUtilsController::class, 'setOrder'])
+    ->withoutMiddleware(['throttle:api']);
 Route::post('/restaurant/orders/{orderId}', [FirestoreUtilsController::class, 'updateOrder']);
 Route::post('/restaurant/orders/wallet-credit', [FirestoreUtilsController::class, 'restaurantVendorWalletSet']);
 
@@ -600,7 +665,10 @@ Route::post('/restaurant/reset-password',  [restaurentrestpassword::class, 'rese
 // ------------------------------------------------------------------
 Route::prefix('driver-sql')->group(function () {
 //    Route::post('/is-login', [DriverSqlBridgeController::class, 'isLogin']);
-    Route::get('/users/{uid}/exists', [DriverSqlBridgeController::class, 'userExistOrNot']);
+    Route::get('/users/{uid}/exists', [DriverSqlBridgeController::class, 'userExistOrNot'])
+        ->withoutMiddleware(['throttle:api']);
+
+
 //    Route::get('/users/{uid}', [DriverSqlBridgeController::class, 'getDriverProfile']);
     Route::post('/users/update', [DriverSqlBridgeController::class, 'updateDriver']);
     Route::post('/wallet/update', [DriverSqlBridgeController::class, 'updateUserWallet']);

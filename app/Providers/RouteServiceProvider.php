@@ -26,7 +26,7 @@ class RouteServiceProvider extends ServiceProvider
      *
      * @var string|null
      */
-    
+
 
     /**
      * Define your route model bindings, pattern filters, etc.
@@ -57,7 +57,9 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting()
     {
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
+            // Increased limit to prevent 429 errors from Flutter app
+            // Original: 60 per minute, now: 1000 per minute
+            return Limit::perMinute(1000)->by(optional($request->user())->id ?: $request->ip());
         });
     }
 }

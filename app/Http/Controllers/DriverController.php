@@ -206,15 +206,13 @@ class DriverController extends Controller
             }
 
             $filteredRecords = $query->count();
-
-            // Build stats (respect current filters/search)
+// Build stats (respect current filters/search)
             $statsQuery = clone $query;
             $stats = [
                 'total' => $filteredRecords,
                 'active' => (clone $statsQuery)->where('users.active', '1')->count(),
                 'inactive' => (clone $statsQuery)->where('users.active', '0')->count(),
             ];
-
             // Apply ordering and pagination
             $drivers = $query
                 ->orderBy('users.createdAt', 'DESC')
@@ -262,7 +260,7 @@ class DriverController extends Controller
                 'recordsTotal' => $totalRecords,
                 'recordsFiltered' => $filteredRecords,
                 'data' => $data,
-                'stats' => $stats
+                'stats' => $stats,
             ]);
 
         } catch (\Exception $e) {
