@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -10,9 +11,12 @@ use App\Models\MenuItem;
 
 class MenuItemController extends Controller
 {
-    public function __construct()
+    protected FirebaseStorageService $firebaseStorage;
+
+    public function __construct(FirebaseStorageService $firebaseStorage)
     {
         $this->middleware('auth');
+        $this->firebaseStorage = $firebaseStorage;
     }
 
     public function index()
@@ -112,8 +116,10 @@ class MenuItemController extends Controller
         $id = (string) Str::uuid();
         $imageUrl = null;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('public/uploads/menu-items');
-            $imageUrl = asset('storage/' . str_replace('public/', '', $path));
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'banners/banner_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
         }
         MenuItem::create([
             'id' => $id,
@@ -149,8 +155,10 @@ class MenuItemController extends Controller
         ]);
         $imageUrl = $mi->photo;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('public/uploads/menu-items');
-            $imageUrl = asset('storage/' . str_replace('public/', '', $path));
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'banners/banner_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
         }
         $mi->update([
             'title' => $request->input('title',''),

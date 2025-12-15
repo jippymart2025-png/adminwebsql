@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -10,9 +11,12 @@ use App\Models\MartBanner;
 
 class MartBannerController extends Controller
 {
-    public function __construct()
+    protected FirebaseStorageService $firebaseStorage;
+
+    public function __construct(FirebaseStorageService $firebaseStorage)
     {
         $this->middleware('auth');
+        $this->firebaseStorage = $firebaseStorage;
     }
 
     // Views
@@ -108,8 +112,10 @@ class MartBannerController extends Controller
 //        $id = (string) Str::uuid();
         $imageUrl = null;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('public/uploads/mart-banners');
-            $imageUrl = asset('storage/' . str_replace('public/', '', $path));
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'mart-banners/banner_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
         }
         MartBanner::create([
 //            'id' => $id,
@@ -155,8 +161,10 @@ class MartBannerController extends Controller
         ]);
         $imageUrl = $b->photo;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('public/uploads/mart-banners');
-            $imageUrl = asset('storage/' . str_replace('public/', '', $path));
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'mart-banners/banner_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
         }
         $b->update([
             'title' => $request->input('title',''),
@@ -288,61 +296,70 @@ class MartBannerController extends Controller
             $storeId = $request->input('storeId');
             $search  = trim((string) $request->input('q', ''));
 
-            // Debug helper: detect products without a valid vendor mapping
-            $orphanedProductIds = DB::table('vendor_products')
-                ->leftJoin('vendors', 'vendor_products.vendorID', '=', 'vendors.id')
+            /**
+             * 🔎 Debug: detect orphaned mart items (vendorID not found in vendors)
+             */
+            $orphanedItemIds = DB::table('mart_items')
+                ->leftJoin('vendors', 'mart_items.vendorID', '=', 'vendors.id')
                 ->whereNull('vendors.id')
-                ->pluck('vendor_products.id')
+                ->pluck('mart_items.id')
                 ->toArray();
 
-            if (!empty($orphanedProductIds)) {
-                \Log::warning('⚠️ Orphaned mart products detected (no vendor match)', [
-                    'count' => count($orphanedProductIds),
-                    'ids' => $orphanedProductIds,
+            if (!empty($orphanedItemIds)) {
+                \Log::warning('⚠️ Orphaned mart items detected (no vendor match)', [
+                    'count' => count($orphanedItemIds),
+                    'ids'   => $orphanedItemIds,
                 ]);
             }
 
-            $productsQuery = DB::table('vendor_products')
-                ->join('vendors', 'vendor_products.vendorID', '=', 'vendors.id')
+            /**
+             * 🛒 Main mart items query
+             */
+            $itemsQuery = DB::table('mart_items')
+                ->join('vendors', 'mart_items.vendorID', '=', 'vendors.id')
                 ->where('vendors.vType', 'mart')
                 ->where(function ($q) {
-                    $q->whereNull('vendor_products.publish')
-                      ->orWhere('vendor_products.publish', '=', 1)
-                      ->orWhere('vendor_products.publish', '=', true);
+                    $q->whereNull('mart_items.publish')
+                        ->orWhere('mart_items.publish', 1);
                 });
 
-            if ($storeId) {
-                $productsQuery->where('vendor_products.vendorID', $storeId);
+            // Filter by store/vendor
+            if (!empty($storeId)) {
+                $itemsQuery->where('mart_items.vendorID', $storeId);
             }
 
+            // Search filter
             if ($search !== '') {
-                $productsQuery->where(function ($q) use ($search) {
-                    $q->where('vendor_products.name', 'like', '%' . $search . '%')
-                      ->orWhere('vendors.title', 'like', '%' . $search . '%');
+                $itemsQuery->where(function ($q) use ($search) {
+                    $q->where('mart_items.name', 'like', '%' . $search . '%')
+                        ->orWhere('vendors.title', 'like', '%' . $search . '%');
                 });
             }
 
-            $products = $productsQuery
-                ->orderBy('vendor_products.name', 'asc')
+            $items = $itemsQuery
+                ->orderBy('mart_items.name', 'asc')
                 ->get([
-                    'vendor_products.id',
-                    'vendor_products.name',
-                    'vendor_products.vendorID',
+                    'mart_items.id',
+                    'mart_items.name',
+                    'mart_items.vendorID',
                     'vendors.title as vendorTitle',
                 ]);
 
             return response()->json([
                 'success' => true,
-                'data' => $products
+                'data'    => $items
             ]);
+
         } catch (\Exception $e) {
-            \Log::error('Error fetching mart products: ' . $e->getMessage());
+            \Log::error('Error fetching mart items: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error fetching products'
+                'message' => 'Error fetching mart items'
             ], 500);
         }
     }
+
 
     /**
      * Get mart categories

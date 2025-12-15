@@ -39,9 +39,9 @@
                     </div>
                     <div class="form-group row width-50">
                         <label class="col-3 control-label">{{trans('lang.photo')}}</label>
-                        <input type="file" onChange="handleFileSelect(event)" class="col-7">
+                        <input type="file" name="photo" id="banner_photo" class="col-7">
                         <div id="uploding_image"></div>
-                        <div class="placeholder_img_thumb user_image"></div>
+                        <div class="placeholder_img_thumb user_image" style="min-height:160px; margin-top:10px;"></div>
                     </div>
                     <div class="form-group row width-50" id="banner_position">
                         <label class="col-3 control-label ">{{trans('lang.banner_position')}}</label>
@@ -208,6 +208,25 @@
             loadProducts();
         }
     });
+
+    function handleFileSelect(event) {
+        console.log('✅ handleFileSelect triggered');
+        let file = event.target.files[0];
+        if (!file) return;
+
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            console.log('✅ FileReader loaded, updating preview');
+            $(".user_image").html(
+                `<img id="preview_image"
+                      src="${e.target.result}"
+                      style="width:150px;height:auto;border-radius:6px;display:block;">`
+            );
+        };
+        reader.readAsDataURL(file);
+    }
+
+    $(document).on('change', '#banner_photo', handleFileSelect);
 
     $(document).ready(function(){
         console.log('✅ Initializing Menu Items Create page');
