@@ -174,6 +174,10 @@
     }
 </style>
 @section('scripts')
+    <!-- Load Leaflet CSS for offline mode -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css" />
+
     <script>
         // Declare global variables first
         var map;
@@ -192,160 +196,167 @@
         var deleteButton, dragMap;
         var selectedPolygon = null;
         var mapType = 'ONLINE';
-        
-        // Load map type from SQL settings instead of Firebase (synchronous)
-        $.ajax({
-            url: '/api/settings/driver',
-            method: 'GET',
-            async: false,
-            success: function(data) {
-                if (data && data.selectedMapType && data.selectedMapType == "osm") {
-                    mapType = "OFFLINE";
-                }
-                console.log('✅ Zone Create - Loaded map type from SQL:', mapType);
-            },
-            error: function() {
-                console.warn('⚠️ Could not load map settings, using default (ONLINE)');
-            }
-        });
+        var mapInitialized = false;
 
-        // Wait for Map API (Google Maps or Leaflet) to load before initializing map
-        function waitForGoogleMaps(callback, maxAttempts = 100) {
-            var attempts = 0;
-            var checkInterval = setInterval(function() {
-                attempts++;
-                var isReady = false;
-                
-                // Check if we're in offline mode and Leaflet is loaded
-                if (mapType === "OFFLINE") {
-                    if (typeof L !== 'undefined' && L.map) {
-                        isReady = true;
-                        console.log('✅ Leaflet (OpenStreetMap) API ready');
-                    }
-                } else {
-                    // Check if Google Maps is loaded
-                    if (typeof google !== 'undefined' && google.maps) {
-                        isReady = true;
-                        console.log('✅ Google Maps API ready');
-                    }
-                }
-                
-                if (isReady) {
-                    clearInterval(checkInterval);
-                    console.log('✅ Map API ready, initializing map...');
-                    callback();
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(checkInterval);
-                    console.error('❌ Failed to load map API after ' + (maxAttempts * 100) + 'ms');
-                    console.error('Map Type:', mapType);
-                    console.error('Google defined:', typeof google !== 'undefined');
-                    console.error('Leaflet defined:', typeof L !== 'undefined');
-                    console.error('🔍 Debug Info:');
-                    console.error('   - Check Network tab for failed requests');
-                    console.error('   - Look for console errors about API key');
-                    console.error('   - Verify Maps JavaScript API is enabled');
-                    alert('Failed to load map. Please check console for details or refresh the page.');
-                } else if (attempts % 20 === 0) {
-                    // Log every 2 seconds
-                    console.log('⏳ Waiting for ' + mapType + ' map API to load... Attempt ' + attempts + '/100');
-                }
-            }, 100);
+             // Define getCookie function if not already defined
+             function getCookie(name) {
+            var nameEQ = name + "=";
+            var ca = document.cookie.split(';');
+            for(var i=0;i < ca.length;i++) {
+                var c = ca[i];
+                while (c.charAt(0)==' ') c = c.substring(1,c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+            }
+            return null;
         }
 
-        // DIRECT APPROACH: Load map scripts based on map type
-        console.log('🚀🚀🚀 ZONE CREATE PAGE LOADING - TIMESTAMP:', new Date().toISOString());
-        console.log('📊 Map Type:', mapType);
-        console.log('🔍 Google exists:', typeof google !== 'undefined');
-        console.log('🔍 Leaflet exists:', typeof L !== 'undefined');
-        
-        // Load appropriate map library based on mapType
-        if (mapType === "OFFLINE") {
-            // Load Leaflet scripts for offline maps
-            if (typeof L === 'undefined') {
-                console.log('⚡ LOADING Leaflet (OpenStreetMap) NOW...');
-                
-                // Load Leaflet core
-                var leafletScript = document.createElement('script');
-                leafletScript.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
-                leafletScript.onload = function() {
-                    console.log('✅ Leaflet core loaded');
-                    
-                    // Load Leaflet Draw
-                    var leafletDrawScript = document.createElement('script');
-                    leafletDrawScript.src = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.js';
-                    leafletDrawScript.onload = function() {
-                        console.log('✅ Leaflet Draw loaded');
-                        // Initialize map after Leaflet is loaded
-                        setTimeout(function() {
-                            initMap();
-                        }, 500);
-                    };
-                    document.head.appendChild(leafletDrawScript);
-                };
-                document.head.appendChild(leafletScript);
-            } else {
-                // Leaflet already loaded, initialize map
-                setTimeout(function() {
-                    initMap();
-                }, 500);
-            }
-        } else {
-            // FORCE LOAD Google Maps with your working API key
-            if (typeof google === 'undefined') {
-                console.log('⚡ FORCE LOADING Google Maps NOW...');
-                var forceScript = document.createElement('script');
-                forceScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneMap';
-                forceScript.async = false; // Load synchronously
-                forceScript.defer = false;
-                document.head.appendChild(forceScript);
-                console.log('✅ Script tag added to head');
-            } else {
-                // Google Maps already loaded, initialize map
-                setTimeout(function() {
-                    initMap();
-                }, 500);
-            }
-        }
-        
-        // Callback function for Google Maps
+
+        // Callback function for Google Maps - MUST be defined before script loads
         window.initZoneMap = function() {
             console.log('✅✅✅ Google Maps callback fired!');
             console.log('🗺️ Initializing map now...');
-            setTimeout(function() {
-                initMap();
-            }, 500);
+            if (!mapInitialized) {
+                setTimeout(function() {
+                    initMap();
+                }, 300);
+            }
         };
 
         $(document).ready(function () {
             console.log('📄 Document ready event fired');
-            
-            // Fallback if callback doesn't fire - check both map types
+
+            // Load map type from SQL settings
+            $.ajax({
+                url: '/api/settings/driver',
+                method: 'GET',
+                async: false,
+                success: function(data) {
+                    if (data && data.selectedMapType && data.selectedMapType == "osm") {
+                        mapType = "OFFLINE";
+                    }
+                    console.log('✅ Zone Create - Loaded map type from SQL:', mapType);
+                },
+                error: function() {
+                    console.warn('⚠️ Could not load map settings, using default (ONLINE)');
+                }
+            });
+
+            // Ensure map container exists and is visible
+            var mapElement = document.getElementById('map');
+            if (!mapElement) {
+                console.error('❌ Map container not found!');
+                return;
+            }
+
+            // Load appropriate map library based on mapType
+            if (mapType === "OFFLINE") {
+                // Load Leaflet scripts for offline maps
+                if (typeof L === 'undefined') {
+                    console.log('⚡ LOADING Leaflet (OpenStreetMap) NOW...');
+
+                    // Load Leaflet CSS if not already loaded
+                    if (!document.querySelector('link[href*="leaflet.css"]')) {
+                        var leafletCSS = document.createElement('link');
+                        leafletCSS.rel = 'stylesheet';
+                        leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
+                        document.head.appendChild(leafletCSS);
+
+                        var leafletDrawCSS = document.createElement('link');
+                        leafletDrawCSS.rel = 'stylesheet';
+                        leafletDrawCSS.href = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.css';
+                        document.head.appendChild(leafletDrawCSS);
+                    }
+
+                    // Load Leaflet core
+                    var leafletScript = document.createElement('script');
+                    leafletScript.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
+                    leafletScript.onload = function() {
+                        console.log('✅ Leaflet core loaded');
+
+                        // Load Leaflet Draw
+                        var leafletDrawScript = document.createElement('script');
+                        leafletDrawScript.src = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.js';
+                        leafletDrawScript.onload = function() {
+                            console.log('✅ Leaflet Draw loaded');
+                            // Initialize map after Leaflet is loaded
+                            setTimeout(function() {
+                                if (!mapInitialized) {
+                                    initMap();
+                                }
+                            }, 300);
+                        };
+                        leafletDrawScript.onerror = function() {
+                            console.error('❌ Failed to load Leaflet Draw');
+                            alert('Failed to load map drawing library. Please refresh the page.');
+                        };
+                        document.head.appendChild(leafletDrawScript);
+                    };
+                    leafletScript.onerror = function() {
+                        console.error('❌ Failed to load Leaflet');
+                        alert('Failed to load map library. Please check your internet connection and refresh the page.');
+                    };
+                    document.head.appendChild(leafletScript);
+                } else {
+                    // Leaflet already loaded, initialize map
+                    console.log('✅ Leaflet already loaded, initializing map...');
+                    setTimeout(function() {
+                        if (!mapInitialized) {
+                            initMap();
+                        }
+                    }, 300);
+                }
+            } else {
+                // Load Google Maps
+                if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                    console.log('⚡ LOADING Google Maps NOW...');
+                    var forceScript = document.createElement('script');
+                    forceScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneMap';
+                    forceScript.async = true;
+                    forceScript.defer = true;
+                    forceScript.onerror = function() {
+                        console.error('❌ Failed to load Google Maps');
+                        alert('Failed to load Google Maps. Please check your internet connection and API key.');
+                    };
+                    document.head.appendChild(forceScript);
+                    console.log('✅ Google Maps script tag added');
+                } else {
+                    // Google Maps already loaded, initialize map
+                    console.log('✅ Google Maps already loaded, initializing map...');
+                    setTimeout(function() {
+                        if (!mapInitialized) {
+                            initMap();
+                        }
+                    }, 300);
+                }
+            }
+
+            // Fallback check - ensure map initializes even if callback doesn't fire
             setTimeout(function() {
                 var mapElement = document.getElementById('map');
-                if (!mapElement || !mapElement.hasChildNodes()) {
+                if (!mapInitialized && mapElement) {
                     if (mapType === "OFFLINE") {
                         if (typeof L !== 'undefined' && L.map) {
                             console.log('✅ Leaflet detected via fallback check');
-                            console.log('🔧 Map not initialized yet, initializing now...');
+                            console.log('🔧 Initializing map now...');
                             initMap();
                         } else {
-                            console.error('❌ Leaflet still not loaded after 5 seconds');
+                            console.error('❌ Leaflet still not loaded after 3 seconds');
                             console.error('🌐 Check your internet connection');
                             console.error('📦 Verify Leaflet CDN is accessible');
                         }
                     } else {
                         if (typeof google !== 'undefined' && google.maps) {
                             console.log('✅ Google Maps detected via fallback check');
-                            console.log('🔧 Map not initialized yet, initializing now...');
+                            console.log('🔧 Initializing map now...');
                             initMap();
                         } else {
-                            console.error('❌ Google Maps still not loaded after 5 seconds');
+                            console.error('❌ Google Maps still not loaded after 3 seconds');
                             console.error('🌐 Check your internet connection');
                             console.error('🔑 Verify API key at: https://console.cloud.google.com/');
                         }
                     }
                 }
-            }, 5000);
+            }, 3000);
             $(".save-setting-btn").click(function () {
                 var name = $("#name").val();
                 var publish = $("#publish").is(":checked");
@@ -374,7 +385,7 @@
                             area.push({latitude: item.lat, longitude: item.lng});
                         }
                         jQuery("#overlay").show();
-                        
+
                         // Save to SQL database via AJAX
                         $.ajax({
                             url: "{{ route('zone.store') }}",
@@ -521,7 +532,7 @@
                 }
             });
         });
-        
+
         // Initialize function variables based on map type
         var onclickFunc, polygonFunc, deleteareaFunc;
         if(mapType == "OFFLINE"){
@@ -972,34 +983,61 @@
             }
         }
         function initMap() {
-            var default_lat = getCookie('default_latitude');
-            var default_lng = getCookie('default_longitude');
+            // Prevent multiple initializations
+            if (mapInitialized) {
+                console.log('⚠️ Map already initialized, skipping...');
+                return;
+            }
+
+            var mapElement = document.getElementById('map');
+            if (!mapElement) {
+                console.error('❌ Map container not found!');
+                return;
+            }
+
+            var default_lat = getCookie('default_latitude') || '23.022505';
+            var default_lng = getCookie('default_longitude') || '72.571365';
             var legend = document.getElementById('legend');
+
+            console.log('🗺️ Initializing map with type:', mapType);
+            console.log('📍 Default location:', default_lat, default_lng);
+
             if (mapType == "ONLINE"){
+                // Check if Google Maps is available
+                if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                    console.error('❌ Google Maps not available');
+                    return;
+                }
+
                 $(".mapType").show();
                 var infowindow = new google.maps.InfoWindow({
                     size: new google.maps.Size(150, 50)
                 });
-                map = new google.maps.Map(document.getElementById('map'), {
-                    zoom: 8,
-                    center: new google.maps.LatLng(default_lat, default_lng),
-                    mapTypeControl: false,
-                    mapTypeControlOptions: {
-                        style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-                        position: google.maps.ControlPosition.LEFT_CENTER
-                    },
-                    zoomControl: true,
-                    zoomControlOptions: {
-                        position: google.maps.ControlPosition.RIGHT_CENTER
-                    },
-                    scaleControl: false,
-                    scaleControlOptions: {
-                        position: google.maps.ControlPosition.RIGHT_CENTER
-                    },
-                    streetViewControl: false,
-                    fullscreenControl: false
-                });
-                searchBox();
+
+                try {
+                    map = new google.maps.Map(mapElement, {
+                        zoom: 8,
+                        center: new google.maps.LatLng(parseFloat(default_lat), parseFloat(default_lng)),
+                        mapTypeControl: false,
+                        mapTypeControlOptions: {
+                            style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+                            position: google.maps.ControlPosition.LEFT_CENTER
+                        },
+                        zoomControl: true,
+                        zoomControlOptions: {
+                            position: google.maps.ControlPosition.RIGHT_CENTER
+                        },
+                        scaleControl: false,
+                        scaleControlOptions: {
+                            position: google.maps.ControlPosition.RIGHT_CENTER
+                        },
+                        streetViewControl: false,
+                        fullscreenControl: false
+                    });
+
+                    console.log('✅ Google Maps initialized successfully');
+                    mapInitialized = true;
+                    searchBox();
                 var shapeOptions = {
                     strokeWeight: 1,
                     fillOpacity: 0.4,
@@ -1060,20 +1098,38 @@
                 });
                 google.maps.event.addListener(drawingManager, 'drawingmode_changed', clearSelection);
                 google.maps.event.addListener(map, 'click', clearSelection);
+                } catch (error) {
+                    console.error('❌ Error initializing Google Maps:', error);
+                    alert('Error initializing Google Maps. Please refresh the page.');
+                    return;
+                }
             }
             else
             {
+                // Check if Leaflet is available
+                if (typeof L === 'undefined') {
+                    console.error('❌ Leaflet not available');
+                    return;
+                }
+
                 $(".mapType").hide();
-                searchBox();
-                map = L.map('map').setView([default_lat, default_lng], 10);
-                map.dragging.disable();
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                    attribution: '© OpenStreetMap'
-                }).addTo(map);
-                // Create a feature group to store drawn items (polygons, lines, etc.)
-                drawnItems = new L.FeatureGroup();
-                map.addLayer(drawnItems);
+
+                try {
+                    map = L.map('map').setView([parseFloat(default_lat), parseFloat(default_lng)], 10);
+                    map.dragging.disable();
+
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+
+                    console.log('✅ Leaflet map initialized successfully');
+                    mapInitialized = true;
+                    searchBox();
+
+                    // Create a feature group to store drawn items (polygons, lines, etc.)
+                    drawnItems = new L.FeatureGroup();
+                    map.addLayer(drawnItems);
                 // Set up the Leaflet Draw control
                 var drawControl = new L.Control.Draw({
                     edit: {
@@ -1153,6 +1209,11 @@
                     }
                 });
                 enablePolygonDrawing(map);
+                } catch (error) {
+                    console.error('❌ Error initializing Leaflet map:', error);
+                    alert('Error initializing map. Please refresh the page.');
+                    return;
+                }
             }
         }
     </script>

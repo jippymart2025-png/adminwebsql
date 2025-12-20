@@ -1536,13 +1536,13 @@ class RestaurantController extends Controller
             $dateRange = $request->input('date_range', '');
             $startDate = $request->input('start_date', '');
             $endDate = $request->input('end_date', '');
-            
+
             \Log::info('📅 Vendor date filter request:', [
                 'date_range' => $dateRange,
                 'start_date' => $startDate,
                 'end_date' => $endDate
             ]);
-            
+
             // Handle date range presets first
             if ($dateRange === 'last_24_hours') {
                 // For last 24 hours, compare datetime (need to handle microseconds and Z timezone)
@@ -1589,11 +1589,9 @@ class RestaurantController extends Controller
                     [$startDateFormatted, $endDateFormatted]);
                 \Log::info('📅 Applied legacy date filter:', ['start' => $startDateFormatted, 'end' => $endDateFormatted]);
             } else {
-                // No date range selected - default to today only
-                $today = Carbon::today()->format('Y-m-d');
-                // Extract date part: first 10 characters after removing quotes
-                $query->whereRaw("SUBSTRING(REPLACE(users.createdAt, '\"', ''), 1, 10) = ?", [$today]);
-                \Log::info('📅 No date range - defaulting to today:', ['today' => $today]);
+                // No date range selected - show ALL vendors (no date filter)
+                \Log::info('📅 No date range - showing all vendors (no date filter)');
+                // Intentionally no whereRaw() here
             }
 
             // Get total count before applying search
@@ -4176,7 +4174,7 @@ class RestaurantController extends Controller
 
     /**
      * Calculate actual isOpen status based on isOpen flag and working hours
-     * 
+     *
      * Logic:
      * 1. If working hours are DISABLED (empty/null or all timeslots empty) → always return false (closed)
      * 2. If working hours are ENABLED:
@@ -4184,7 +4182,7 @@ class RestaurantController extends Controller
      *    - If isOpen flag is true → check working hours:
      *      - If current time is within working hours → return true (open)
      *      - If current time is outside working hours → return false (closed)
-     * 
+     *
      * @param bool $isOpenFlag The isOpen flag from database
      * @param array|null $workingHours The working hours array from database
      * @return bool
@@ -4290,6 +4288,69 @@ class RestaurantController extends Controller
             return $dt->format('H') * 60 + (int)$dt->format('i');
         } catch (\Exception $e) {
             return null;
+        }
+    }
+    public function inlineUpdateAdminCommission(Request $request, $id)
+    {
+        try {
+            $vendor = Vendor::where('id', $id)->first();
+
+            if (!$vendor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Restaurant not found'
+                ], 404);
+            }
+
+            $fixCommission  = $request->input('fix_commission');
+            $commissionType = $request->input('commissionType', 'Percent');
+            $isEnabled      = $request->boolean('isEnabled');
+
+            if (!in_array($commissionType, ['Percent', 'Fixed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid commission type'
+                ], 400);
+            }
+
+            if (!is_numeric($fixCommission) || $fixCommission < 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid commission value'
+                ], 400);
+            }
+
+            if ($commissionType === 'Percent' && $fixCommission > 100) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Commission cannot exceed 100%'
+                ], 400);
+            }
+
+            $vendor->adminCommission = json_encode([
+                'fix_commission' => (float) $fixCommission,
+                'commissionType' => $commissionType,
+                'isEnabled'      => $isEnabled
+            ]);
+
+            $vendor->save();
+
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Admin commission updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Inline commission update failed', [
+                'id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update admin commission'
+            ], 500);
         }
     }
 }

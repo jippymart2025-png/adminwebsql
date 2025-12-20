@@ -58,7 +58,7 @@ foreach ($countries as $keycountry => $valuecountry) {
                   <div class="form-text text-muted">{{trans('lang.user_password_help')}}</div>
                 </div>
               </div>
-              <div class="form-group row"> 
+              <div class="form-group row">
                 <label class="col-3 control-label">{{trans('lang.user_phone')}}</label>
                 <div class="col-md-6">
                   <div class="phone-box position-relative" id="phone-box">
@@ -153,11 +153,11 @@ $(document).ready(function() {
     var photo = "";
     var fileName='';
     var user_active_deactivate = false;
-    
+
     $(document).ready(function() {
       jQuery("#data-table_processing").show();
       jQuery("#data-table_processing").hide();
-      
+
       // Load zones from SQL
       $.ajax({
         url: '{{route("drivers.zones")}}',
@@ -187,7 +187,7 @@ $(document).ready(function() {
       $('#phone_chk').on('keypress',function(event){
         if (!(event.which >= 48 && event.which <= 57)) {
           document.getElementById('error2').innerHTML = "Accept only Number";
-          return false; 
+          return false;
         } else {
           document.getElementById('error2').innerHTML = "";
           return true;
@@ -211,7 +211,7 @@ $(document).ready(function() {
           'latitude': latitude,
           'longitude': longitude
         };
-        
+
         // Validation
         if (userFirstName == '') {
           $(".error_top").show();
@@ -244,9 +244,9 @@ $(document).ready(function() {
           window.scrollTo(0, 0);
           return;
         }
-        
+
         jQuery("#data-table_processing").show();
-        
+
         // Prepare driver data
         var driverData = {
             firstName: userFirstName,
@@ -265,12 +265,15 @@ $(document).ready(function() {
             role: 'driver',
             _token: '{{csrf_token()}}'
         };
-        
+
         // Create driver via AJAX SQL
         $.ajax({
             url: '{{route("drivers.create.post")}}',
             type: 'POST',
             data: driverData,
+            headers: {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            },
             success: function(response) {
                 if(response.success) {
                     console.log('✅ Driver created successfully');

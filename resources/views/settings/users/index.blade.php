@@ -63,15 +63,15 @@
             @if(session('success'))
                 <div class="alert alert-success">{{ session('success') }}</div>
             @endif
-            @if($errors->any())
-                <div class="alert alert-danger">
-                    <ul class="mb-0">
-                        @foreach($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
+{{--            @if($errors->any())--}}
+{{--                <div class="alert alert-danger">--}}
+{{--                    <ul class="mb-0">--}}
+{{--                        @foreach($errors->all() as $error)--}}
+{{--                            <li>{{ $error }}</li>--}}
+{{--                        @endforeach--}}
+{{--                    </ul>--}}
+{{--                </div>--}}
+{{--            @endif--}}
 
             <div class="row mb-4">
                 <div class="col-12">
@@ -132,6 +132,24 @@
                                         <a class="btn-primary btn rounded-full" href="{!! route('users.create') !!}"><i
                                                 class="mdi mdi-plus mr-2"></i>{{trans('lang.user_create')}}</a>
                                     </div>
+{{--                                    <div class="dropdown ml-2">--}}
+{{--                                        <button class="btn btn-info dropdown-toggle" type="button"--}}
+{{--                                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">--}}
+{{--                                            <i class="mdi mdi-cloud-download"></i> Export as--}}
+{{--                                        </button>--}}
+
+{{--                                        <div class="dropdown-menu dropdown-menu-right">--}}
+{{--                                            <a class="dropdown-item" href="javascript:void(0)" onclick="exportUsers('excel')">--}}
+{{--                                                Export Excel--}}
+{{--                                            </a>--}}
+{{--                                            <a class="dropdown-item" href="javascript:void(0)" onclick="exportUsers('pdf')">--}}
+{{--                                                Export PDF--}}
+{{--                                            </a>--}}
+{{--                                            <a class="dropdown-item" href="javascript:void(0)" onclick="exportUsers('csv')">--}}
+{{--                                                Export CSV--}}
+{{--                                            </a>--}}
+{{--                                        </div>--}}
+{{--                                    </div>--}}
                                 </div>
                             </div>
                             <div class="card-body">
@@ -488,7 +506,7 @@
                 };
                 const table = $('#userTable').DataTable({
                     pageLength: 30,
-                    lengthMenu: [[10,30, 50, 100], [10,30, 50, 100,]],
+                    lengthMenu: [[10,30, 50, 100,500,1000], [10,30, 50, 100,500,1000]],
                     processing: false, // Show processing indicator
                     serverSide: true, // Enable server-side processing
                     responsive: true,
@@ -501,18 +519,19 @@
                         let activeFilter = statusValue;  // sends '1' or '0' directly
 
                         const zoneValue = $('.zone_selector').val();
+                        console.log('🌍 Zone filter value:', zoneValue);
                         const daterangepicker = $('#daterange').data('daterangepicker');
                         let from = '', to = '';
-                        
+
                         // Date range - check both preset and custom
                         var selectedRange = $('#date_range_selector').val();
-                        
+
                         // Send date_range parameter for preset handling
                         var dateRangeParam = '';
                         if (selectedRange) {
                             dateRangeParam = selectedRange;
                         }
-                        
+
                         // Handle "all_orders" - don't send date filters
                         if (selectedRange === 'all_orders') {
                             console.log('📅 AJAX data - All users selected, skipping date filter');
@@ -530,7 +549,7 @@
                         } else {
                             console.log('📅 AJAX data - No date range set');
                         }
-                        
+
                         $('#data-table_processing').show();
                         $.ajax({
                             url: apiBase + '/app-users',
@@ -631,7 +650,7 @@
                         "emptyTable": "{{trans("lang.no_record_found")}}",
                         "processing": ""
                     },
-                    dom: 'lfrtipB',
+                     dom: 'lfrtipB',
                     buttons: [
                         {
                             extend: 'collection',
@@ -639,29 +658,27 @@
                             className: 'btn btn-info',
                             buttons: [
                                 {
-                                    extend: 'excelHtml5',
-                                    text: 'Export Excel',
-                                    action: function (e, dt, button, config) {
-                                        exportData(dt, 'excel', fieldConfig);
-                                    }
-                                },
-                                {
-                                    extend: 'pdfHtml5',
-                                    text: 'Export PDF',
-                                    action: function (e, dt, button, config) {
-                                        exportData(dt, 'pdf', fieldConfig);
-                                    }
-                                },
-                                {
-                                    extend: 'csvHtml5',
                                     text: 'Export CSV',
-                                    action: function (e, dt, button, config) {
-                                        exportData(dt, 'csv', fieldConfig);
+                                    action: function () {
+                                        exportUsers('csv');
                                     }
-                                }
+                                },
+                                {
+                                    text: 'Export PDF',
+                                    action: function () {
+                                        exportUsers('pdf');
+                                    }
+                                },
+                                {
+                                    text: 'Export EXCEL',
+                                    action: function () {
+                                        exportUsers('excel');
+                                    }
+                                },
                             ]
                         }
                     ],
+
                     initComplete: function () {
                         $(".dataTables_filter").append($(".dt-buttons").detach());
                         $('.dataTables_filter input').attr('placeholder', 'Search here...').attr('autocomplete', 'new-password').val('');
@@ -774,5 +791,23 @@
                 alert('Failed to update status');
             });
         });
+        function exportUsers(type) {
+            let daterangepicker = $('#daterange').data('daterangepicker');
+            const selectedZoneId = $('.zone_selector').val();
+            console.log('🌍 Export - Zone filter value:', selectedZoneId);
+
+            let params = {
+                search: $('.dataTables_filter input').val(),
+                active: $('.status_selector').val(),
+                zoneId: selectedZoneId,
+                date_range: $('#date_range_selector').val(),
+                from: daterangepicker ? daterangepicker.startDate.format('YYYY-MM-DD HH:mm:ss') : '',
+                to: daterangepicker ? daterangepicker.endDate.format('YYYY-MM-DD HH:mm:ss') : '',
+                role: 'customer',
+                type: type
+            };
+
+            window.location.href = apiBase + '/app-users/export?' + $.param(params);
+        }
     </script>
 @endsection

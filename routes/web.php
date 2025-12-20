@@ -22,6 +22,7 @@ use App\Http\Controllers\CuisineController;
 Auth::routes();
 Route::get('/', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
 //Route::get('/dashboard', [App\Http\Controllers\HomeController::class, 'index'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
 Route::get('lang/change', [App\Http\Controllers\LangController::class, 'change'])->name('changeLang');
 
@@ -167,11 +168,16 @@ Route::middleware(['permission:foods,foods'])->group(function () {
 Route::middleware(['permission:foods,foods'])->group(function () {
     Route::get('/foods/{id}', [App\Http\Controllers\FoodController::class, 'index'])->name('restaurants.foods');
 });
+Route::post('/foods/{id}/apply-discount', [App\Http\Controllers\FoodController::class, 'applyDiscount'])->name('foods.applyDiscount');
+Route::post('/foods/{restaurantId}/remove-discount', [App\Http\Controllers\FoodController::class, 'removeDiscount'])->name('foods.removeDiscount');
+
 Route::middleware(['permission:foods,foods.edit'])->group(function () {
     Route::get('/foods/edit/{id}', [App\Http\Controllers\FoodController::class, 'edit'])->name('foods.edit');
     Route::patch('/foods/inline-update/{id}', [App\Http\Controllers\FoodController::class, 'inlineUpdate'])->name('foods.inlineUpdate');
     Route::put('/foods/{id}', [App\Http\Controllers\FoodController::class, 'update'])->name('foods.update');
     Route::post('/foods/{id}/toggle', [App\Http\Controllers\FoodController::class, 'togglePublish'])->name('foods.toggle');
+    Route::post('/foods/{id}/is-available', [App\Http\Controllers\FoodController::class, 'toggleIsAvailable'])->name('foods.toggleIsAvailable');
+
 });
 Route::middleware(['permission:foods,foods.create'])->group(function () {
     Route::get('/food/create', [App\Http\Controllers\FoodController::class, 'create'])->name('foods.create');
@@ -1470,6 +1476,8 @@ Route::middleware(['permission:restaurants,restaurants'])->group(function () {
     Route::get('/restaurants/{id}/data', [App\Http\Controllers\RestaurantController::class, 'getRestaurantById'])->name('restaurants.getById');
     Route::get('/restaurants/{id}/stats', [App\Http\Controllers\RestaurantController::class, 'getRestaurantStats'])->name('restaurants.stats');
     Route::post('/restaurants/global-status', [App\Http\Controllers\RestaurantController::class, 'updateGlobalStatus'])->name('restaurants.global-status');
+    Route::patch('/restaurants/inline-update-commission/{id}', [App\Http\Controllers\RestaurantController::class, 'inlineUpdateAdminCommission'])->name('restaurants.inlineUpdateCommission');
+
     Route::get('/api/users/{id}', [App\Http\Controllers\UserController::class, 'getUserById'])->name('users.api.getById');
     Route::get('/api/users/{id}/wallet-balance', [App\Http\Controllers\UserController::class, 'getWalletBalance'])->name('users.api.wallet-balance');
 //    Route::post('/users/wallet/add', [App\Http\Controllers\UserController::class, 'addWalletAmount'])->name('users.api.wallet.add');
@@ -1555,7 +1563,6 @@ Route::prefix('cache-test')->group(function () {
 
 });
 
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
 Route::any('/dashboard/clear-cache', [DashboardController::class, 'clearCache']);
 

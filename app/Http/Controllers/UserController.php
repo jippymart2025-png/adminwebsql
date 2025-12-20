@@ -42,8 +42,17 @@ class UserController extends Controller
 
     public function adminUsers()
     {
+        // Only fetch needed columns
         $users = admin_users::join('role', 'role.id', '=', 'admin_users.role_id')
-            ->select('admin_users.*', 'role.role_name as roleName')
+            ->select(
+                'admin_users.id',
+                'admin_users.name',
+                'admin_users.email',
+                'admin_users.role_id',
+                'admin_users.created_at',
+                'admin_users.updated_at',
+                'role.role_name as roleName'
+            )
             ->where('admin_users.id', '!=', 1)
             ->get();
         return view('admin_users.index', compact(['users']));
@@ -51,7 +60,8 @@ class UserController extends Controller
 
     public function createAdminUsers()
     {
-        $roles = Role::all();
+        // Only fetch needed columns
+        $roles = Role::select('id', 'role_name')->orderBy('role_name')->get();
         return view('admin_users.create', compact(['roles']));
     }
     public function storeAdminUsers(Request $request)
@@ -88,11 +98,21 @@ class UserController extends Controller
     }
     public function editAdminUsers($id)
     {
+        // Only fetch needed columns
         $user = admin_users::join('role', 'role.id', '=', 'admin_users.role_id')
-            ->select('admin_users.*', 'role.role_name as roleName')
+            ->select(
+                'admin_users.id',
+                'admin_users.name',
+                'admin_users.email',
+                'admin_users.role_id',
+                'admin_users.created_at',
+                'admin_users.updated_at',
+                'role.role_name as roleName'
+            )
             ->where('admin_users.id', $id)
             ->first();
-        $roles = Role::all();
+        // Only fetch needed columns
+        $roles = Role::select('id', 'role_name')->orderBy('role_name')->get();
         return view('admin_users.edit', compact(['user', 'roles']));
     }
     public function updateAdminUsers(Request $request, $id)
@@ -896,7 +916,9 @@ class UserController extends Controller
                     'shippingAddress' => $shippingAddress,
                     'zoneId' => $zoneId,
                     'isActive' => $user->isActive,
-                    'createdAt' => $user->createdAt,
+                    'createdAt' => \Carbon\Carbon::parse($user->createdAt)
+                        ->timezone('Asia/Kolkata')
+                        ->toIso8601String(),
                     'totalOrders' => $totalOrders,
                 ]
             ]);

@@ -215,10 +215,16 @@ class DriverController extends Controller
             ];
             // Apply ordering and pagination
             $drivers = $query
-                ->orderBy('users.createdAt', 'DESC')
+                ->orderByRaw("
+        STR_TO_DATE(
+            REPLACE(REPLACE(users.createdAt, '\"', ''), 'T', ' '),
+            '%Y-%m-%d %H:%i:%s'
+        ) DESC
+    ")
                 ->skip($start)
                 ->take($length)
                 ->get();
+
 
             // Prepare final JSON response
             $data = [];

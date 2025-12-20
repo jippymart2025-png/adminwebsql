@@ -9,6 +9,7 @@
   "license": "MIT",
   "require": {
     "php": "^8.1",
+    "barryvdh/laravel-dompdf": "^3.1",
     "braintree/braintree_php": "^6.7",
     "firebase/php-jwt": "^6.11",
     "google/apiclient": "^2.16",
@@ -22,9 +23,9 @@
     "laravel/sanctum": "^3.3",
     "laravel/tinker": "^2.8",
     "laravel/ui": "^4.2.2",
+    "maatwebsite/excel": "^3.1",
     "paypal/paypal-payouts-sdk": "~1.0.0",
     "paytm/paytmchecksum": "^1.1",
-    "phpoffice/phpspreadsheet": "^4.5",
     "razorpay/razorpay": "2.*",
     "spatie/laravel-sitemap": "^7.3",
     "spatie/schema-org": "^3.23",

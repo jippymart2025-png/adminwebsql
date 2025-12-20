@@ -47,7 +47,8 @@ class Vendor extends Model
         'DeliveryCharge' => 'boolean',
         'isSelfDelivery' => 'boolean',
         'hidephotos' => 'boolean',
-        'reststatus' => 'boolean'
+        'reststatus' => 'boolean',
+        'adminCommission' => 'array'
     ];
 
     public function payouts()
