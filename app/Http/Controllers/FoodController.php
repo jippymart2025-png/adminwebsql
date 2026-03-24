@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Vendor;
+use App\Models\vendor_products;
 use App\Models\VendorProduct;
 use App\Services\ActivityLogger;
+use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -12,16 +15,64 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class FoodController extends Controller
 {
-    public function __construct()
+    protected FirebaseStorageService $firebaseStorage;
+    public function __construct(FirebaseStorageService $firebaseStorage)
     {
         $this->middleware('auth');
+        $this->firebaseStorage = $firebaseStorage;
     }
 
-    public function index($restaurantId = '')
+//    public function index($restaurantId = '')
+//    {
+//        return view('foods.index', [
+//            'restaurantId' => $restaurantId,
+//        ]);
+//    }
+
+    public function index($restaurantId = null)
     {
-        return view('foods.index', [
-            'restaurantId' => $restaurantId,
+        if ($restaurantId) {
+            // Only fetch needed columns
+            $foods = VendorProduct::select('id', 'name', 'price', 'disPrice', 'vendorID', 'categoryID', 'publish', 'isAvailable', 'photo', 'createdAt')
+                ->where('vendorID', $restaurantId)
+                ->get();
+            $restaurant = Vendor::select('id', 'title', 'name')->find($restaurantId);
+        } else {
+            // Only fetch needed columns - limit to prevent loading too much data
+            $foods = VendorProduct::select('id', 'name', 'price', 'disPrice', 'vendorID', 'categoryID', 'publish', 'isAvailable', 'photo', 'createdAt')
+                ->limit(1000) // Add limit to prevent loading all records
+                ->get();
+            $restaurant = null;
+        }
+
+        return view('foods.index', compact('foods', 'restaurant', 'restaurantId'));
+    }
+
+    public function applyDiscount(Request $request, $restaurantId)
+    {
+        $request->validate([
+            'discount' => 'required|numeric|min:1|max:100',
+            'valid_until' => 'nullable|date'
         ]);
+
+        VendorProduct::where('vendorID', $restaurantId)
+            ->update([
+                'discount' => $request->discount,
+                'discount_valid_until' => $request->valid_until
+            ]);
+
+        return back()->with('success', 'Discount applied to all foods of this restaurant!');
+    }
+
+    public function removeDiscount(Request $request, $restaurantId)
+    {
+        VendorProduct::where('vendorID', $restaurantId)
+            ->update([
+                'discount' => 0,
+                'discount_valid_until' => null
+            ]);
+
+        return back()->with('success', 'All discounts removed for this restaurant!');
     }
 
     public function create($restaurantId = '')
@@ -88,13 +139,13 @@ class FoodController extends Controller
         $userPermissions = json_decode(@session('user_permissions'), true) ?: [];
         $canDelete = in_array('foods.delete', $userPermissions);
 
-        $draw = (int) $request->input('draw', 1);
-        $start = (int) $request->input('start', 0);
-        $length = (int) $request->input('length', 10);
-        $search = strtolower((string) data_get($request->input('search'), 'value', ''));
+        $draw = (int)$request->input('draw', 1);
+        $start = (int)$request->input('start', 0);
+        $length = (int)$request->input('length', 10);
+        $search = strtolower((string)data_get($request->input('search'), 'value', ''));
 
         $restaurantFilter = $request->input('restaurant');
-        $categoryFilter = $request->input('category');
+        $categoryFilter = $request->input('category') ?? $request->input('categoryId');
         $foodTypeFilter = $request->input('foodType');
         $restaurantId = $request->input('restaurantId');
 
@@ -107,6 +158,8 @@ class FoodController extends Controller
                 'vp.photo',
                 'vp.price',
                 'vp.disPrice',
+                'vp.discount',                 // NEW
+                'vp.discount_valid_until',
                 'vp.vendorID',
                 'vp.categoryID',
                 'vp.description',
@@ -150,7 +203,7 @@ class FoodController extends Controller
         $recordsFiltered = $query->count();
 
         $order = $request->input('order.0', ['column' => 1, 'dir' => 'asc']);
-        $orderColumnIndex = (int) data_get($order, 'column', 1);
+        $orderColumnIndex = (int)data_get($order, 'column', 1);
         $orderDir = data_get($order, 'dir', 'asc') === 'desc' ? 'desc' : 'asc';
 
         $orderableColumns = $canDelete
@@ -166,20 +219,39 @@ class FoodController extends Controller
         $foods = $query->skip($start)->take($length)->get();
 
         $data = $foods->map(function ($food) {
+
+            // Default final price is original price
+            $finalPrice = $food->price;
+
+            // Discount logic
+            if (!empty($food->discount) && $food->discount > 0) {
+
+                $today = now()->toDateString();
+
+                if (!empty($food->discount_valid_until) && $today <= $food->discount_valid_until) {
+
+                    $discountAmount = ($food->price * $food->discount) / 100;
+                    $finalPrice = $food->price - $discountAmount;
+                }
+            }
+
             return [
                 'id' => $food->id,
                 'name' => $food->name,
                 'photo' => $this->buildPhotoUrl($food->photo),
                 'price' => $food->price,
+                'finalPrice' => $finalPrice,                 // NEW → calculated
+                'discount' => $food->discount,               // NEW
+                'discount_valid_until' => $food->discount_valid_until, // NEW
                 'disPrice' => $food->disPrice,
                 'vendorID' => $food->vendorID,
                 'categoryID' => $food->categoryID,
                 'restaurant_name' => $food->restaurant_name,
                 'category_name' => $food->category_name,
                 'description' => $food->description,
-                'publish' => (bool) $food->publish,
-                'nonveg' => (bool) $food->nonveg,
-                'isAvailable' => (bool) $food->isAvailable,
+                'publish' => (bool)$food->publish,
+                'nonveg' => (bool)$food->nonveg,
+                'isAvailable' => (bool)$food->isAvailable,
             ];
         });
 
@@ -220,11 +292,37 @@ class FoodController extends Controller
         }
 
         if ($type === 'categories') {
-            $categories = DB::table('vendor_categories')
-                ->orderBy('title')
-                ->get(['id', 'title']);
 
-            return response()->json(['success' => true, 'data' => $categories]);
+            $restaurantId = $request->input('restaurantId');
+            $restaurantFilter = $request->input('restaurant');
+            $foodTypeFilter = $request->input('foodType');
+
+            $query = DB::table('vendor_categories as vc');
+
+            // Build base query to get categories from foods that match current filters
+            $query->join('vendor_products as vp', 'vp.categoryID', '=', 'vc.id')
+                ->select('vc.id', 'vc.title')
+                ->distinct();
+
+            // Apply restaurant filter (from URL parameter or filter dropdown)
+            $appliedRestaurantId = $restaurantId ?: $restaurantFilter;
+            if (!empty($appliedRestaurantId)) {
+                $query->where('vp.vendorID', $appliedRestaurantId);
+            }
+
+            // Apply food type filter (veg/non-veg)
+            if ($foodTypeFilter === 'veg') {
+                $query->where('vp.nonveg', 0);
+            } elseif ($foodTypeFilter === 'non-veg') {
+                $query->where('vp.nonveg', 1);
+            }
+
+            $categories = $query->orderBy('vc.title')->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $categories
+            ]);
         }
 
         return response()->json(['success' => false, 'message' => 'Invalid type']);
@@ -432,6 +530,31 @@ class FoodController extends Controller
         ]);
     }
 
+    public function toggleIsAvailable(Request $request, $id, ActivityLogger $logger)
+    {
+        $isAvailable = filter_var(
+            $request->input('isAvailable'),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        VendorProduct::where('id', $id)->update([
+            'isAvailable' => $isAvailable,
+            'updatedAt' => now()->toIso8601String(),
+        ]);
+
+        $logger->log(
+            auth()->user(),
+            'foods',
+            $isAvailable ? 'available' : 'unavailable',
+            ($isAvailable ? 'Marked Available' : 'Marked Unavailable') . ' food ID: ' . $id,
+            $request
+        );
+
+        return response()->json([
+            'success' => true
+        ]);
+    }
+
     public function inlineUpdate(Request $request, $id, ActivityLogger $logger)
     {
         $food = VendorProduct::findOrFail($id);
@@ -615,7 +738,7 @@ class FoodController extends Controller
         }
 
 
-            $this->generateTemplate($filePath);
+        $this->generateTemplate($filePath);
 
 
         return response()->download($filePath, 'foods_import_template.xlsx', [
@@ -739,8 +862,12 @@ class FoodController extends Controller
             return null;
         }
 
-        return $request->file('photo')->store('foods', 'public');
+        return $this->firebaseStorage->uploadFile(
+            $request->file('photo'),
+            'foods/food-item_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+        );
     }
+
 
     protected function deleteImage(?string $path): void
     {
@@ -771,7 +898,7 @@ class FoodController extends Controller
             return null;
         }
 
-        return (float) str_replace(',', '', $value);
+        return (float)str_replace(',', '', $value);
     }
 
     protected function parseBoolean($value): bool

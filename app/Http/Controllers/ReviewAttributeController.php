@@ -33,7 +33,8 @@ class ReviewAttributeController extends Controller
      */
     public function getAll()
     {
-        $reviewAttributes = ReviewAttribute::all();
+        // Only fetch needed columns
+        $reviewAttributes = ReviewAttribute::select('id', 'title', 'created_at', 'updated_at')->get();
         return response()->json($reviewAttributes);
     }
 

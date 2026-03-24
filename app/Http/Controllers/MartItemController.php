@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MartItem;
+use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -22,9 +23,11 @@ use App\Services\ActivityLogger;
  */
 class MartItemController extends Controller
 {
-    public function __construct()
+    protected FirebaseStorageService $firebaseStorage;
+    public function __construct(FirebaseStorageService $firebaseStorage)
     {
         $this->middleware('auth');
+        $this->firebaseStorage = $firebaseStorage;
     }
 
     public function index($id = '')
@@ -833,9 +836,16 @@ class MartItemController extends Controller
             ? (DB::table('brands')->where('id', $validated['brandID'])->value('name') ?? '')
             : '';
 
-        $photoPath = null;
+//        $photoPath = null;
+//        if ($request->hasFile('photo')) {
+//            $photoPath = $request->file('photo')->store('mart_items', 'public');
+//        }
+        $imageUrl = null;
         if ($request->hasFile('photo')) {
-            $photoPath = $request->file('photo')->store('mart_items', 'public');
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'mart-items/mart_item_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
         }
 
         $item = MartItem::create([
@@ -852,7 +862,8 @@ class MartItemController extends Controller
             'brandID' => $validated['brandID'] ?? '',
             'brandTitle' => $brandTitle,
             'section' => $validated['section'] ?? 'General',
-            'photo' => $photoPath ? Storage::disk('public')->url($photoPath) : null,
+//            'photo' => $photoPath ? Storage::disk('public')->url($photoPath) : null,
+             'photo' => $imageUrl,
             'description' => $validated['description'],
             'publish' => $request->boolean('publish'),
             'isAvailable' => $request->boolean('isAvailable', true),
@@ -918,7 +929,9 @@ class MartItemController extends Controller
         ]);
 
         $vendorTitle = DB::table('vendors')->where('id', $validated['vendorID'])->value('title') ?? '';
+
         $categoryTitle = DB::table('mart_categories')->where('id', $validated['categoryID'])->value('title') ?? '';
+
         $subcategoryTitle = $validated['subcategoryID']
             ? (DB::table('mart_subcategories')->where('id', $validated['subcategoryID'])->value('title') ?? '')
             : '';
@@ -932,10 +945,17 @@ class MartItemController extends Controller
         }
 
         if ($request->hasFile('photo')) {
-            $this->deleteImage($item->photo);
-            $path = $request->file('photo')->store('mart_items', 'public');
-            $item->photo = Storage::disk('public')->url($path);
+            // Optional: delete old Firebase image if needed
+            // $this->firebaseStorage->deleteFile($item->photo);
+
+            $imageUrl = $this->firebaseStorage->uploadFile(
+                $request->file('photo'),
+                'mart-items/mart_item_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+            );
+
+            $item->photo = $imageUrl;
         }
+
 
         $item->fill([
             'name' => $validated['name'],

@@ -46,19 +46,19 @@
                                 <span class="counter ml-3 food_count"></span>
                             </div>
                             <div class="d-flex top-title-right align-self-center">
-                                <div class="select-box pl-3">
+                                <div class="select-box pl-3" style="width: 180px;">
                                     <select class="form-control food_type_selector">
                                         <option value=""  selected>{{trans("lang.type")}}</option>
                                         <option value="veg">{{trans("lang.veg")}}</option>
                                         <option value="non-veg">{{trans("lang.non_veg")}}</option>
                                     </select>
                                 </div>
-                                <div class="select-box pl-3">
+                                <div class="select-box pl-3" style="width: 180px;">
                                     <select class="form-control restaurant_selector">
                                         <option value=""  selected>{{trans("lang.restaurant")}}</option>
                                     </select>
                                 </div>
-                                <div class="select-box pl-3">
+                                <div class="select-box pl-3" style="width: 180px;">
                                     <select class="form-control category_selector">
                                         <option value=""  selected>{{trans("lang.category_plural")}}</option>
                                     </select>
@@ -148,26 +148,52 @@
                             </ul>
                         </div>
                         <?php } ?>
-                        <div class="card border">
-                            <div class="card-header d-flex justify-content-between align-items-center border-0">
-                                <div class="card-header-title">
-                                    <h3 class="text-dark-2 mb-2 h4">{{trans('lang.food_table')}}</h3>
-                                    <p class="mb-0 text-dark-2">{{trans('lang.food_table_text')}}</p>
-                                </div>
-                                <div class="card-header-right d-flex align-items-center">
-                                    <div class="card-header-btn mr-3">
-                                        <?php if (!empty($restaurantId)) { ?>
-                                        <a class="btn-primary btn rounded-full"
-                                           href="{!! route('foods.create') !!}/{{$restaurantId}}"><i
-                                                class="mdi mdi-plus mr-2"></i>{{trans('lang.food_create')}}</a>
-                                        <?php } else { ?>
-                                        <a class="btn-primary btn rounded-full" href="{!! route('foods.create') !!}"><i
-                                                class="mdi mdi-plus mr-2"></i>{{trans('lang.food_create')}}</a>
-                                        <?php } ?>
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center border-0">
+                            <div class="card-header-title">
+                                <h3 class="text-dark-2 mb-2 h4">{{trans('lang.food_table')}}</h3>
+                                <p class="mb-0 text-dark-2">{{trans('lang.food_table_text')}}</p>
+                            </div>
+                            @if(!empty($restaurantId))
+                            <div class="text-center w-100">
+                                <div class="d-inline-block p-2" style="max-width: 450px;">
+                                    <h4 class="text-center">Apply Discount to All Foods</h4>
+
+                                    <form id="applyDiscountForm" action="{{ route('foods.applyDiscount', $restaurantId) }}" method="POST">
+                                        @csrf
+                                        <input type="number" name="discount" class="form-control mb-2" placeholder="Enter 20 for 20%" required>
+                                        <input type="date" name="valid_until" class="form-control mb-2">
+                                    </form>
+
+                                    <form id="removeDiscountForm" action="{{ route('foods.removeDiscount', $restaurantId) }}" method="POST">
+                                        @csrf
+                                    </form>
+
+                                    <div class="d-flex justify-content-center" style="gap: 12px;">
+                                        <button type="submit" form="applyDiscountForm" class="btn btn-primary mt-2">
+                                            Apply Discount
+                                        </button>
+
+                                        <button type="submit" form="removeDiscountForm" class="btn btn-danger mt-2"
+                                                onclick="return confirm('Remove all discounts?');">
+                                            Remove All Discounts
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                            <div class="card-body">
+                            @endif
+                            <div class="card-header-btn mr-3 text-right">
+                                @if (!empty($restaurantId))
+                                    <a class="btn-primary btn rounded-full"
+                                       href="{!! route('foods.create') !!}/{{$restaurantId}}"><i
+                                            class="mdi mdi-plus mr-2"></i>{{trans('lang.food_create')}}</a>
+                                @else
+                                    <a class="btn-primary btn rounded-full"
+                                       href="{!! route('foods.create') !!}"><i
+                                            class="mdi mdi-plus mr-2"></i>{{trans('lang.food_create')}}</a>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="card-body">
                                 <div class="table-responsive m-t-10">
                                     <table id="foodTable"
                                            class="display nowrap table table-hover table-striped table-bordered table table-striped"
@@ -286,25 +312,42 @@
             }
         });
 
-        // Load categories for filter dropdown from SQL
-        $.ajax({
-            url: '{{ route("foods.options") }}?type=categories',
-            type: 'GET',
-            success: function(response) {
-                if(response.success && response.data) {
-                    response.data.forEach(function(category) {
-                        $('.category_selector').append($("<option></option>")
-                            .attr("value", category.id)
-                            .text(category.title));
-                    });
-                }
-            }
-        });
+        // Function to load categories based on current filters
+        function loadCategories() {
+            var restaurantId = restaurantID || $('.restaurant_selector').val();
+            var foodType = $('.food_type_selector').val();
 
-        // Filter change handler
-        $('select').change(function() {
-            $('#foodTable').DataTable().ajax.reload();
-        });
+            // Clear existing options except the default
+            $('.category_selector').empty().append($("<option></option>")
+                .attr("value", "")
+                .text("{{trans('lang.category_plural')}}"));
+
+            // Build query string with current filters
+            var queryParams = 'type=categories';
+            if (restaurantId) {
+                queryParams += '&restaurantId=' + restaurantId;
+                queryParams += '&restaurant=' + restaurantId;
+            }
+            if (foodType) {
+                queryParams += '&foodType=' + foodType;
+            }
+
+            $.ajax({
+                url: '{{ route("foods.options") }}?' + queryParams,
+                type: 'GET',
+                success: function(response) {
+                    if(response.success && response.data) {
+                        response.data.forEach(function(category) {
+                            $('.category_selector').append($("<option></option>")
+                                .attr("value", category.id)
+                                .text(category.title));
+                        });
+                        // Trigger change to update select2
+                        $('.category_selector').trigger('change');
+                    }
+                }
+            });
+        }
 
         $(document).ready(function() {
             $('.restaurant_selector').select2({
@@ -320,13 +363,37 @@
             $('.category_selector').select2({
                 placeholder: "{{trans('lang.category')}}",
                 minimumResultsForSearch: Infinity,
-                allowClear: true
+                allowClear: true,
+                dropdownAutoWidth: false,
+                width: '100%'
             });
+
+            // Force dropdown list width to match selector width
+            $('.category_selector').on('select2:open', function() {
+                var $dropdown = $('.select2-container--open .select2-dropdown');
+                var $selector = $(this).closest('.select-box');
+                if ($selector.length && $dropdown.length) {
+                    $dropdown.css('width', $selector.outerWidth() + 'px');
+                }
+            });
+
+            // Load categories after select2 is initialized
+            loadCategories();
+
+            // Filter change handler - reload categories when restaurant or food type changes
+            $('.restaurant_selector, .food_type_selector').on('change', function() {
+                loadCategories();
+            });
+
             $('select').on("select2:unselecting", function(e) {
                 var self = $(this);
                 setTimeout(function() {
                     self.select2('close');
                 }, 0);
+            });
+
+            $('.category_selector').change(async function() {
+                $('#foodTable').DataTable().ajax.reload();
             });
 
             jQuery("#data-table_processing").show();
@@ -377,16 +444,58 @@
                             return '<div class="d-flex align-items-center">' + imageHtml + '<div class="ml-3">' + data + foodType + '</div></div>';
                         }
                     },
+                    // {
+                    //     data: 'price',
+                    //     render: function(data, type, row) {
+                    //         if (data == null || data == '' || data == '0') {
+                    //             return '-';
+                    //         }
+                    //         var price = parseFloat(data).toFixed(decimal_degits);
+                    //         return currencyAtRight ? price + ' ' + currentCurrency : currentCurrency + ' ' + price;
+                    //     }
+                    // },
+                    // {
+                    //     data: 'price',
+                    //     render: function(data, type, row) {
+                    //
+                    //         let price = parseFloat(data).toFixed(decimal_degits);
+                    //         let formatted = currencyAtRight ? price + ' ' + currentCurrency : currentCurrency + ' ' + price;
+                    //
+                    //         // ADD DISCOUNT BADGE HERE ⬇⬇⬇
+                    //         if (row.discount && row.discount > 0) {
+                    //             formatted += ` <span class="badge badge-success ml-2">-${row.discount}%</span>`;
+                    //         }
+                    //
+                    //         return formatted;
+                    //     }
+                    // },
                     {
-                        data: 'price',
+                        data: null,
                         render: function(data, type, row) {
-                            if (data == null || data == '' || data == '0') {
-                                return '-';
+
+                            let original = parseFloat(row.price).toFixed(decimal_degits);
+                            let final = parseFloat(row.finalPrice).toFixed(decimal_degits);
+
+                            // When discount is active
+                            if (row.finalPrice < row.price) {
+
+                                return `
+                <span style="text-decoration: line-through; color:#999;">
+                    ${currencyAtRight ? original + ' ' + currentCurrency : currentCurrency + ' ' + original}
+                </span><br>
+
+                <span style="font-weight:bold; color:green;">
+                    ${currencyAtRight ? final + ' ' + currentCurrency : currentCurrency + ' ' + final }
+                    <span class="badge badge-success ml-2">-${row.discount}%</span>
+                </span>
+            `;
                             }
-                            var price = parseFloat(data).toFixed(decimal_degits);
-                            return currencyAtRight ? price + ' ' + currentCurrency : currentCurrency + ' ' + price;
+
+                            // No discount — show only original price
+                            return currencyAtRight ? original + ' ' + currentCurrency : currentCurrency + ' ' + original;
                         }
                     },
+
                     {
                         data: 'disPrice',
                         render: function(data, type, row) {
@@ -495,6 +604,31 @@
                         console.error('Error updating publish status');
                         // Revert checkbox
                         $('input[id="publish_'+id+'"]').prop('checked', !isPublished);
+                    }
+                });
+            });
+
+            // Handle availability toggle
+            $(document).on('change', 'input[id^="available_"]', function () {
+                var id = $(this).data('id');
+                var isAvailable = $(this).is(':checked');
+
+                $.ajax({
+                    url: '{{ route("foods.toggleIsAvailable", ":id") }}'.replace(':id', id),
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        isAvailable: isAvailable
+                    },
+                    success: function (response) {
+                        if (response.success) {
+                            console.log('Availability updated');
+                        }
+                    },
+                    error: function () {
+                        console.error('Error updating availability');
+                        // revert toggle if error
+                        $('#available_' + id).prop('checked', !isAvailable);
                     }
                 });
             });

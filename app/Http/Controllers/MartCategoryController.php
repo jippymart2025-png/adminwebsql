@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MartCategory;
+use App\Services\FirebaseStorageService;
 use Illuminate\Http\Request;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Str;
@@ -13,9 +14,11 @@ use App\Services\ActivityLogger;
 class MartCategoryController extends Controller
 {
 
-    public function __construct()
+    protected FirebaseStorageService $firebaseStorage;
+    public function __construct(FirebaseStorageService $firebaseStorage)
     {
         $this->middleware('auth');
+        $this->firebaseStorage = $firebaseStorage;
     }
 
     public function index()
@@ -531,16 +534,25 @@ class MartCategoryController extends Controller
 
     protected function handlePhotoUpload(Request $request, ?MartCategory $category = null): ?string
     {
-        if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('mart_categories', 'public');
-            return Storage::disk('public')->url($path);
+//        if ($request->hasFile('photo')) {
+//            $path = $request->file('photo')->store('mart_categories', 'public');
+//            return Storage::disk('public')->url($path);
+//        }
+//
+//        if ($request->filled('photo_url')) {
+//            return $request->input('photo_url');
+//        }
+//
+//        return $category?->photo;
+
+        if (!$request->hasFile('photo')) {
+            return null;
         }
 
-        if ($request->filled('photo_url')) {
-            return $request->input('photo_url');
-        }
-
-        return $category?->photo;
+        return $this->firebaseStorage->uploadFile(
+            $request->file('photo'),
+            'mart_categories/mart-category-item_' . time() . '.' . $request->file('photo')->getClientOriginalExtension()
+        );
     }
 
     protected function deleteImage(?string $path): void

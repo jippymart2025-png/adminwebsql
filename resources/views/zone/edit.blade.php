@@ -181,37 +181,55 @@
     }
 </style>
 @section('scripts')
+<!-- Load Leaflet CSS for offline mode -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css" />
+
 <script>
+    // Define getCookie function if not already defined
+    function getCookie(name) {
+        var nameEQ = name + "=";
+        var ca = document.cookie.split(';');
+        for(var i=0;i < ca.length;i++) {
+            var c = ca[i];
+            while (c.charAt(0)==' ') c = c.substring(1,c.length);
+            if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+        }
+        return null;
+    }
+
     var id = "<?php echo $id;?>";
     var default_lat = getCookie('default_latitude') || '23.022505';
     var default_lng = getCookie('default_longitude') || '72.571365';
     var geopoints = '';
     var zoneAreaData = [];
-    let drawnItems = new L.FeatureGroup();
-    let deleteButton ,dragMap;
+    let drawnItems;
+    let deleteButton, dragMap;
     let selectedPolygon = null;
     var mapType = 'ONLINE';
-    
-    // SIMPLE DIRECT APPROACH - Same as create page
-    console.log('🚀🚀🚀 ZONE EDIT PAGE LOADING:', new Date().toISOString());
-    
-    // FORCE LOAD Google Maps with working API key
-    if (typeof google === 'undefined') {
-        console.log('⚡ Loading Google Maps for EDIT page...');
-        var editScript = document.createElement('script');
-        editScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneEditMap';
-        editScript.async = false;
-        editScript.defer = false;
-        document.head.appendChild(editScript);
-        console.log('✅ Script tag added');
-    }
-    
-    // Callback function for Google Maps
+    var mapInitialized = false;
+    var zoneDataLoaded = false;
+
+    // Declare map-related variables
+    var map;
+    var drawingManager;
+    var selectedShape;
+    var selectedKernel;
+    var gmarkers = [];
+    var coordinates = [];
+    var allShapes = [];
+    var sendable_coordinates = [];
+    var shapeColor = "#007cff";
+    var kernelColor = "#000";
+
+    // Callback function for Google Maps - MUST be defined before script loads
     window.initZoneEditMap = function() {
         console.log('✅✅✅ Google Maps callback fired for EDIT!');
-        setTimeout(function() {
-            initMap();
-        }, 500);
+        if (!mapInitialized && zoneDataLoaded) {
+            setTimeout(function() {
+                initMap();
+            }, 300);
+        }
     };
 
     // Set up button handlers after map type is determined
@@ -244,6 +262,24 @@
         document.getElementById("delete-all-button").onclick = deletearea;
     }
     $(document).ready(function () {
+        console.log('📄 Zone edit page ready');
+
+        // Load map type from SQL settings
+        $.ajax({
+            url: '/api/settings/driver',
+            method: 'GET',
+            async: false,
+            success: function(data) {
+                if (data && data.selectedMapType && data.selectedMapType == "osm") {
+                    mapType = "OFFLINE";
+                }
+                console.log('✅ Zone Edit - Loaded map type from SQL:', mapType);
+            },
+            error: function() {
+                console.warn('⚠️ Could not load map settings, using default (ONLINE)');
+            }
+        });
+
         // Load zone data from server-side variable
         @if(isset($zone))
         var zone = {!! json_encode($zone) !!};
@@ -264,12 +300,19 @@
         for (let i = 0; i < values.length; i += 2) {
             const lon = parseFloat(values[i]);
             const lat = parseFloat(values[i + 1]);
-            latLonArray.push([lat, lon]);
+            if (!isNaN(lat) && !isNaN(lon)) {
+                latLonArray.push([lat, lon]);
+            }
         }
 
         if(mapType == "ONLINE"){
-            latLonArray.push(latLonArray[0]);
-            document.getElementById('coordinates').value = latLonArray;
+            if (latLonArray.length > 0) {
+                latLonArray.push(latLonArray[0]);
+                document.getElementById('coordinates').value = JSON.stringify(latLonArray.map(coord => ({
+                    lat: coord[0],
+                    lng: coord[1]
+                })));
+            }
         }
         else
         {
@@ -285,22 +328,128 @@
         if (zone.publish) {
             $("#publish").prop('checked', true);
         }
-        default_lat = zone.latitude;
-        default_lng = zone.longitude;
+        default_lat = zone.latitude || default_lat;
+        default_lng = zone.longitude || default_lng;
 
         // Convert area data to geopoints format for map
         geopoints = areaData.map(item => ({
             latitude: item.latitude || item.lat,
             longitude: item.longitude || item.lng
         }));
+
+        console.log('✅ Zone data loaded:', {
+            name: zone.name,
+            geopointsCount: geopoints.length,
+            default_lat: default_lat,
+            default_lng: default_lng
+        });
+        zoneDataLoaded = true;
         @else
         console.error('Zone data not available');
         alert('Error: Zone data not loaded');
+        zoneDataLoaded = true; // Still allow map to load
         @endif
 
-        // Map will initialize automatically via Google Maps callback
-        console.log('📄 Zone edit page ready - waiting for map callback');
-        
+        // Ensure map container exists
+        var mapElement = document.getElementById('map');
+        if (!mapElement) {
+            console.error('❌ Map container not found!');
+            return;
+        }
+
+        // Load appropriate map library based on mapType
+        if (mapType === "OFFLINE") {
+            // Load Leaflet scripts for offline maps
+            if (typeof L === 'undefined') {
+                console.log('⚡ LOADING Leaflet (OpenStreetMap) for EDIT...');
+
+                // Load Leaflet CSS if not already loaded
+                if (!document.querySelector('link[href*="leaflet.css"]')) {
+                    var leafletCSS = document.createElement('link');
+                    leafletCSS.rel = 'stylesheet';
+                    leafletCSS.href = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.css';
+                    document.head.appendChild(leafletCSS);
+
+                    var leafletDrawCSS = document.createElement('link');
+                    leafletDrawCSS.rel = 'stylesheet';
+                    leafletDrawCSS.href = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.css';
+                    document.head.appendChild(leafletDrawCSS);
+                }
+
+                // Load Leaflet core
+                var leafletScript = document.createElement('script');
+                leafletScript.src = 'https://unpkg.com/leaflet@1.7.1/dist/leaflet.js';
+                leafletScript.onload = function() {
+                    console.log('✅ Leaflet core loaded');
+
+                    // Load Leaflet Draw
+                    var leafletDrawScript = document.createElement('script');
+                    leafletDrawScript.src = 'https://unpkg.com/leaflet-draw/dist/leaflet.draw.js';
+                    leafletDrawScript.onload = function() {
+                        console.log('✅ Leaflet Draw loaded');
+                        setTimeout(function() {
+                            if (!mapInitialized && zoneDataLoaded) {
+                                initMap();
+                            }
+                        }, 300);
+                    };
+                    leafletDrawScript.onerror = function() {
+                        console.error('❌ Failed to load Leaflet Draw');
+                    };
+                    document.head.appendChild(leafletDrawScript);
+                };
+                leafletScript.onerror = function() {
+                    console.error('❌ Failed to load Leaflet');
+                };
+                document.head.appendChild(leafletScript);
+            } else {
+                console.log('✅ Leaflet already loaded, initializing map...');
+                setTimeout(function() {
+                    if (!mapInitialized && zoneDataLoaded) {
+                        initMap();
+                    }
+                }, 300);
+            }
+        } else {
+            // Load Google Maps
+            if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                console.log('⚡ LOADING Google Maps for EDIT...');
+                var editScript = document.createElement('script');
+                editScript.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34&libraries=places,drawing&callback=initZoneEditMap';
+                editScript.async = true;
+                editScript.defer = true;
+                editScript.onerror = function() {
+                    console.error('❌ Failed to load Google Maps');
+                };
+                document.head.appendChild(editScript);
+                console.log('✅ Google Maps script tag added');
+            } else {
+                console.log('✅ Google Maps already loaded, initializing map...');
+                setTimeout(function() {
+                    if (!mapInitialized && zoneDataLoaded) {
+                        initMap();
+                    }
+                }, 300);
+            }
+        }
+
+        // Fallback check - ensure map initializes even if callback doesn't fire
+        setTimeout(function() {
+            if (!mapInitialized && zoneDataLoaded) {
+                if (mapType === "OFFLINE") {
+                    if (typeof L !== 'undefined' && L.map) {
+                        console.log('✅ Leaflet detected via fallback check');
+                        initMap();
+                    }
+                } else {
+                    if (typeof google !== 'undefined' && google.maps) {
+                        console.log('✅ Google Maps detected via fallback check');
+                        initMap();
+                    }
+                }
+            }
+        }, 3000);
+
         $(".edit-setting-btn").click(function () {
             var name = $("#name").val();
             var publish = $("#publish").is(":checked");
@@ -502,16 +651,7 @@
             }
         });
     });
-    var map;
-    var drawingManager;
-    var selectedShape;
-    var selectedKernel;
-    var gmarkers = [];
-    var coordinates = [];
-    var allShapes = [];
-    var sendable_coordinates = [];
-    var shapeColor = "#007cff";
-    var kernelColor = "#000";
+
     function addNewPolys(newPoly) {
         google.maps.event.addListener(newPoly, 'click', function() {
             setSelection(newPoly);
@@ -914,107 +1054,179 @@
         }
     }
     function initMap() {
+        // Prevent multiple initializations
+        if (mapInitialized) {
+            console.log('⚠️ Map already initialized, skipping...');
+            return;
+        }
+
         // Hide loading indicator and show map
         $('#map-loading').hide();
         $('#map').show();
 
+        var mapElement = document.getElementById('map');
+        if (!mapElement) {
+            console.error('❌ Map container not found!');
+            return;
+        }
+
+        console.log('🗺️ Initializing map with type:', mapType);
+        console.log('📍 Default location:', default_lat, default_lng);
+        console.log('📍 Geopoints:', geopoints);
+        console.log('📍 Geopoints count:', (Array.isArray(geopoints) ? geopoints.length : (geopoints && geopoints.length ? geopoints.length : 0)));
+
         if (mapType == "ONLINE"){
+            // Check if Google Maps is available
+            if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                console.error('❌ Google Maps not available');
+                return;
+            }
+
             var infowindow = new google.maps.InfoWindow({
                 size: new google.maps.Size(150, 50)
-            })
+            });
             $(".mapType").show();
-            map = new google.maps.Map(document.getElementById('map'), {
-                zoom: 8,
-                center: new google.maps.LatLng(default_lat, default_lng),
-                mapTypeControl: false,
-                mapTypeControlOptions: {
-                    style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-                    position: google.maps.ControlPosition.LEFT_CENTER
-                },
-                zoomControl: true,
-                zoomControlOptions: {
-                    position: google.maps.ControlPosition.RIGHT_CENTER
-                },
-                scaleControl: false,
-                scaleControlOptions: {
-                    position: google.maps.ControlPosition.RIGHT_CENTER
-                },
-                streetViewControl: false,
-                fullscreenControl: false
-            });
-            var zones = [];
-            var zones_area = [];
-            for (i = 0; i < geopoints.length; i++) {
-                zones_area.push({'lat': geopoints[i].latitude, 'lng': geopoints[i].longitude})
-            }
-            zones.push(zones_area);
-            var i;
-            var polygon;
-            for (i = 0; i < zones.length; i++) {
-                polygon = new google.maps.Polygon({
-                    paths: zones[i],
+
+            try {
+                map = new google.maps.Map(mapElement, {
+                    zoom: 8,
+                    center: new google.maps.LatLng(parseFloat(default_lat), parseFloat(default_lng)),
+                    mapTypeControl: false,
+                    mapTypeControlOptions: {
+                        style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+                        position: google.maps.ControlPosition.LEFT_CENTER
+                    },
+                    zoomControl: true,
+                    zoomControlOptions: {
+                        position: google.maps.ControlPosition.RIGHT_CENTER
+                    },
+                    scaleControl: false,
+                    scaleControlOptions: {
+                        position: google.maps.ControlPosition.RIGHT_CENTER
+                    },
+                    streetViewControl: false,
+                    fullscreenControl: false
+                });
+
+                console.log('✅ Google Maps initialized successfully');
+
+                // Render existing zone polygon if geopoints exist
+                if (geopoints && (Array.isArray(geopoints) ? geopoints.length > 0 : (typeof geopoints === 'string' && geopoints !== ''))) {
+                    // Ensure geopoints is an array
+                    if (typeof geopoints === 'string') {
+                        try {
+                            geopoints = JSON.parse(geopoints);
+                        } catch (e) {
+                            console.error('Error parsing geopoints:', e);
+                            geopoints = [];
+                        }
+                    }
+
+                    if (Array.isArray(geopoints) && geopoints.length > 0) {
+                        var zones = [];
+                        var zones_area = [];
+                        for (var i = 0; i < geopoints.length; i++) {
+                            if (geopoints[i] && geopoints[i].latitude && geopoints[i].longitude) {
+                                zones_area.push({
+                                    lat: parseFloat(geopoints[i].latitude),
+                                    lng: parseFloat(geopoints[i].longitude)
+                                });
+                            }
+                        }
+
+                    if (zones_area.length > 0) {
+                        zones.push(zones_area);
+                        console.log('✅ Rendering existing zone polygon with', zones_area.length, 'points');
+
+                        var polygon;
+                        for (var i = 0; i < zones.length; i++) {
+                            polygon = new google.maps.Polygon({
+                                paths: zones[i],
+                                strokeWeight: 1,
+                                strokeColor: '#007cff',
+                                fillColor: '#007cff',
+                                fillOpacity: 0.4,
+                                editable: true,
+                                draggable: true
+                            });
+                            polygon.setMap(map);
+                            addNewPolys(polygon);
+                            allShapes.push(polygon);
+
+                            google.maps.event.addListener(polygon, 'click', function(e) {
+                                getCoordinates(polygon);
+                            });
+
+                            google.maps.event.addListener(polygon, "dragend", function(e) {
+                                for (var j = 0; j < allShapes.length; j++) {
+                                    if (polygon.getPath() == allShapes[j].getPath()) {
+                                        allShapes.splice(j, 1);
+                                    }
+                                }
+                                allShapes.push(polygon);
+                                let lat_lng = [];
+                                allShapes.forEach(function(data, index) {
+                                    lat_lng[index] = getCoordinates(data);
+                                });
+                                document.getElementById('coordinates').value = JSON.stringify(lat_lng);
+                            });
+
+                            google.maps.event.addListener(polygon.getPath(), "insert_at", function(e) {
+                                for (var j = 0; j < allShapes.length; j++) {
+                                    if (polygon.getPath() == allShapes[j].getPath()) {
+                                        allShapes.splice(j, 1);
+                                    }
+                                }
+                                allShapes.push(polygon);
+                                let lat_lng = [];
+                                allShapes.forEach(function(data, index) {
+                                    lat_lng[index] = getCoordinates(data);
+                                });
+                                document.getElementById('coordinates').value = JSON.stringify(lat_lng);
+                            });
+
+                            google.maps.event.addListener(polygon.getPath(), "remove_at", function(e) {
+                                getCoordinates(polygon);
+                            });
+
+                            google.maps.event.addListener(polygon.getPath(), "set_at", function(e) {
+                                getCoordinates(polygon);
+                            });
+                        }
+
+                        let lat_lng = [];
+                        allShapes.forEach(function(data, index) {
+                            lat_lng[index] = getCoordinates(data);
+                        });
+                        document.getElementById('coordinates').value = JSON.stringify(lat_lng);
+                    } else {
+                        console.warn('⚠️ No valid geopoints to render');
+                    }
+                    } else {
+                        console.warn('⚠️ Geopoints is not a valid array');
+                    }
+                } else {
+                    console.warn('⚠️ No geopoints data available');
+                }
+
+                searchBox();
+
+                var shapeOptions = {
                     strokeWeight: 1,
-                    strokeColor:'#007cf',
-                    fillColor: '#007cff',
                     fillOpacity: 0.4,
+                    editable: true,
+                    draggable: true
+                };
+                drawingManager = new google.maps.drawing.DrawingManager({
+                    drawingMode: null,
+                    drawingControl: false,
+                    drawingControlOptions: {
+                        position: google.maps.ControlPosition.RIGHT_CENTER,
+                        drawingModes: ['polygon']
+                    },
+                    polygonOptions: shapeOptions,
+                    map: map
                 });
-                polygon.setMap(map);
-                addNewPolys(polygon);
-                allShapes.push(polygon);
-                    google.maps.event.addListener(polygon, 'click', function(e) { getCoordinates(polygon); });
-                    google.maps.event.addListener(polygon, "dragend", function(e) {
-                    for (i=0; i < allShapes.length; i++) {
-                        if (polygon.getPath() == allShapes[i].getPath()) {
-                            allShapes.splice(i, 1);
-                        }
-                    }
-                    allShapes.push(polygon);
-                    let lat_lng = [];
-                    allShapes.forEach(function(data, index) {
-                        lat_lng[index] = getCoordinates(data);
-                    });
-                    document.getElementById('coordinates').value = JSON.stringify(lat_lng);
-                });
-                google.maps.event.addListener(polygon.getPath(), "insert_at", function(e) {
-                    for (i=0; i < allShapes.length; i++) {   // Clear out the old allShapes entry
-                        if (polygon.getPath() == allShapes[i].getPath()) {
-                            allShapes.splice(i, 1);
-                        }
-                    }
-                    allShapes.push(polygon);
-                    let lat_lng = [];
-                    allShapes.forEach(function(data, index) {
-                        lat_lng[index] = getCoordinates(data);
-                    });
-                    document.getElementById('coordinates').value = JSON.stringify(lat_lng);
-                });
-                google.maps.event.addListener(polygon.getPath(), "remove_at", function(e) { getCoordinates(polygon); });
-                google.maps.event.addListener(polygon.getPath(), "set_at", function(e) { getCoordinates(polygon); });
-            }
-            let lat_lng = [];
-            allShapes.forEach(function(data, index) {
-                lat_lng[index] = getCoordinates(data);
-            });
-            document.getElementById('coordinates').value = JSON.stringify(lat_lng);
-            searchBox();
-            var shapeOptions = {
-                strokeWeight: 1,
-                fillOpacity: 0.4,
-                editable: true,
-                draggable: true
-            };
-            drawingManager = new google.maps.drawing.DrawingManager({
-                // direct polygon drawing setting
-                // drawingMode: google.maps.drawing.OverlayType.POLYGON,
-                drawingMode: null,
-                drawingControl: false,
-                drawingControlOptions: {
-                    position: google.maps.ControlPosition.RIGHT_CENTER,
-                    drawingModes: ['polygon']
-                },
-                polygonOptions: shapeOptions,
-                map: map
-            });
             google.maps.event.addListener(drawingManager, 'overlaycomplete', function(e) {
                 var newShape = e.overlay;
                 allShapes.push(newShape);
@@ -1057,75 +1269,135 @@
                     getCoordinates(newShape);
                 });
             });
-            google.maps.event.addListener(drawingManager, 'drawingmode_changed', clearSelection);
-            google.maps.event.addListener(map, 'click', clearSelection);
+                google.maps.event.addListener(drawingManager, 'drawingmode_changed', clearSelection);
+                google.maps.event.addListener(map, 'click', clearSelection);
+
+                mapInitialized = true;
+                setupButtonHandlers();
+                console.log('✅✅✅ Google Maps fully initialized and ready!');
+            } catch (error) {
+                console.error('❌ Error initializing Google Maps:', error);
+                alert('Error initializing Google Maps. Please refresh the page.');
+                return;
+            }
         }
         else
         {
+            // Check if Leaflet is available
+            if (typeof L === 'undefined') {
+                console.error('❌ Leaflet not available');
+                return;
+            }
+
             $(".mapType").hide();
-            searchBox();
-            map = L.map('map').setView([default_lat, default_lng], 10);
-            map.dragging.disable();
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
-            // Create a feature group to store drawn items (polygons, lines, etc.)
-            drawnItems = new L.FeatureGroup();
-            map.addLayer(drawnItems);
-            const AREA = document.getElementById('area').value;
-            const values = AREA.split(',');
-            const latLonArray = [];
-            for (let i = 0; i < values.length; i += 2) {
-                const lat = parseFloat(values[i + 1]); // Latitude is the second value in the pair
-                const lon = parseFloat(values[i]);    // Longitude is the first value in the pair
-                latLonArray.push([lat, lon]);          // Add [lat, lon] pair to the array
-            }
-            const cooo = [
-                latLonArray.map(coord => ({
-                    lat: coord[0],
-                    lon: coord[1]
-                }))
-            ];
-            if(mapType == "ONLINE"){
-                document.getElementById('coordinates').value = JSON.stringify(cooo);
-            }
-            else
-            {
-                var coordinatesString = JSON.stringify(cooo);
-                // Check if the string starts with '[[' and remove the first '[' if true
-                if (coordinatesString.startsWith('[[')) {
-                    coordinatesString = coordinatesString.slice(1);  // Remove the first '['
+
+            try {
+                map = L.map('map').setView([parseFloat(default_lat), parseFloat(default_lng)], 10);
+                map.dragging.disable();
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+
+                console.log('✅ Leaflet map initialized successfully');
+
+                // Create a feature group to store drawn items (polygons, lines, etc.)
+                drawnItems = new L.FeatureGroup();
+                map.addLayer(drawnItems);
+
+                // Render existing zone polygon if geopoints exist
+                if (geopoints && (Array.isArray(geopoints) ? geopoints.length > 0 : (typeof geopoints === 'string' && geopoints !== ''))) {
+                    // Ensure geopoints is an array
+                    if (typeof geopoints === 'string') {
+                        try {
+                            geopoints = JSON.parse(geopoints);
+                        } catch (e) {
+                            console.error('Error parsing geopoints:', e);
+                            geopoints = [];
+                        }
+                    }
+
+                    if (Array.isArray(geopoints) && geopoints.length > 0) {
+                        const latLonArray = [];
+                        for (let i = 0; i < geopoints.length; i++) {
+                            if (geopoints[i] && geopoints[i].latitude && geopoints[i].longitude) {
+                                latLonArray.push([
+                                    parseFloat(geopoints[i].latitude),
+                                    parseFloat(geopoints[i].longitude)
+                                ]);
+                            }
+                        }
+
+                        if (latLonArray.length > 0) {
+                        console.log('✅ Rendering existing zone polygon with', latLonArray.length, 'points');
+
+                        // Create a polygon and add it to the map
+                        var polygon = L.polygon(latLonArray, {
+                            color: '#007cff',
+                            weight: 3,
+                            fillOpacity: 0.4
+                        }).addTo(drawnItems);
+
+                        polygon.on('click', function () {
+                            if (selectedPolygon) {
+                                selectedPolygon.setStyle({ color: '#007cff', weight: 3 });
+                            }
+                            polygon.setStyle({ color: 'red', weight: 3 });
+                            selectedPolygon = polygon;
+
+                            // Update coordinates
+                            const coordinates = polygon.getLatLngs();
+                            var coordinatesString = JSON.stringify(coordinates);
+                            if (coordinatesString.startsWith('[[')) {
+                                coordinatesString = coordinatesString.slice(1);
+                            }
+                            if (coordinatesString.endsWith(']]')) {
+                                coordinatesString = coordinatesString.slice(0, -1);
+                            }
+                            document.getElementById('coordinates').value = coordinatesString;
+                        });
+
+                        makePolygonDraggable(polygon);
+
+                        // Update coordinates field
+                        var coordinatesString = JSON.stringify(latLonArray.map(coord => ({
+                            lat: coord[0],
+                            lon: coord[1]
+                        })));
+                        if (coordinatesString.startsWith('[[')) {
+                            coordinatesString = coordinatesString.slice(1);
+                        }
+                        if (coordinatesString.endsWith(']]')) {
+                            coordinatesString = coordinatesString.slice(0, -1);
+                        }
+                        document.getElementById('coordinates').value = coordinatesString;
+                        } else {
+                            console.warn('⚠️ No valid geopoints to render');
+                        }
+                    } else {
+                        console.warn('⚠️ Geopoints is not a valid array');
+                    }
+                } else {
+                    console.warn('⚠️ No geopoints data available');
                 }
-                if (coordinatesString.endsWith(']]')) {
-                    coordinatesString = coordinatesString.slice(0, -1);  // Remove the last ']'
-                }
-                // Set the cleaned string as the value of the input field
-                document.getElementById('coordinates').value = coordinatesString;
-            }
-            // Create a polygon and add it to the map
-            var polygon = L.polygon(latLonArray, { color: 'blue' }).addTo(drawnItems);
-            polygon.on('click', function () {
-                if (selectedPolygon) {
-                    selectedPolygon.setStyle({ color: 'blue', weight: 3 });
-                }
-                polygon.setStyle({ color: 'red', weight: 3 });
-                selectedPolygon = polygon;
-            });
-            map.addControl(new L.Control.Draw({
-                draw: {  // Disable drawing functionality
-                    polygon: true,  // Enable drawing of polygons
-                    rectangle: false, // Disable rectangle drawing
-                    circle: false,    // Disable circle drawing
-                    marker: false,    // Disable marker drawing
-                    polyline: false,  // Disable polyline drawing
-                    circlemarker: false,
-                },
-                edit: {
-                    featureGroup: drawnItems,  // Allow editing of drawn items
-                    remove: false  // Allow removal of items
-                }
-            }));
+
+                searchBox();
+
+                map.addControl(new L.Control.Draw({
+                    draw: {
+                        polygon: true,
+                        rectangle: false,
+                        circle: false,
+                        marker: false,
+                        polyline: false,
+                        circlemarker: false,
+                    },
+                    edit: {
+                        featureGroup: drawnItems,
+                        remove: false
+                    }
+                }));
             map.on('draw:edited', function(event) {
                 event.layers.eachLayer(function(layer) {
                     if (layer instanceof L.Polygon  || layer instanceof L.MultiPolygon) {
@@ -1184,11 +1456,22 @@
                 }
             });
             enablePolygonDrawing(map);
+
+            mapInitialized = true;
+            setupButtonHandlers();
+            console.log('✅✅✅ Leaflet map fully initialized and ready!');
+            } catch (error) {
+                console.error('❌ Error initializing Leaflet map:', error);
+                alert('Error initializing map. Please refresh the page.');
+                return;
+            }
         }
 
-        // Set up button handlers after map is initialized
-        setupButtonHandlers();
-        console.log('✅ Zone edit map initialized successfully');
+        // Set up button handlers after map is initialized (fallback)
+        if (mapInitialized) {
+            setupButtonHandlers();
+            console.log('✅ Zone edit map initialized successfully');
+        }
     }
 </script>
 @endsection

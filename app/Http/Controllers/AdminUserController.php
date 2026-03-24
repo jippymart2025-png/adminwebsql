@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\AppUser;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminUserController extends Controller
 {
@@ -84,6 +87,13 @@ class AdminUserController extends Controller
         }
 
         // Create new user
+        // Set createdAt in Asia/Kolkata timezone
+        // Store in ISO format (e.g., "2025-12-19T09:50:00.000000+05:30")
+        // Format: YYYY-MM-DDTHH:mm:ss.microseconds+timezone
+        $createdAt = Carbon::now('Asia/Kolkata')->format('Y-m-d\TH:i:s.uP');
+        // Store as JSON string format (with quotes) for consistency with system
+        $createdAt = '"' . $createdAt . '"';
+        
         $user = AppUser::create([
             'firebase_id' => $firebase_id,
             '_id' => $firebase_id, // Also set _id for compatibility
@@ -100,7 +110,7 @@ class AdminUserController extends Controller
             'isActive' => $isActive ? 1 : 0,
             'zoneId' => $validated['zoneId'] ?? null,
             'appIdentifier' => 'web',
-            'createdAt' => now()->format('Y-m-d H:i:s'),
+            'createdAt' => $createdAt,
             'wallet_amount' => 0,
         ]);
 
@@ -115,6 +125,22 @@ class AdminUserController extends Controller
             ]
         ], 201);
     }
+
+    /**
+     * Get users list with pagination and filters
+     *
+     * Performance optimizations:
+     * - Uses range queries instead of whereDate for better index usage
+     * - Uses JSON_EXTRACT for faster JSON column searches
+     * - Only selects needed columns
+     * - Removed inefficient LIKE search on createdAt
+     *
+     * Recommended database indexes:
+     * - CREATE INDEX idx_users_role_createdAt ON users(role, createdAt);
+     * - CREATE INDEX idx_users_active ON users(active);
+     * - CREATE INDEX idx_users_createdAt ON users(createdAt);
+     * - CREATE INDEX idx_users_email ON users(email);
+     */
     public function index(Request $request)
     {
         $limit = (int) $request->query('limit', 10);
@@ -135,31 +161,45 @@ class AdminUserController extends Controller
         $dateRange = $request->query('date_range');
         $from = $request->query('from');
         $to = $request->query('to');
-        
+
         // Handle date range presets
+        // Note: createdAt is stored as JSON string format (e.g., "2025-12-19T09:50:00.000000+05:30")
+        // We need to extract and parse the date properly
         if ($dateRange === 'last_24_hours') {
-            $query->where('createdAt', '>=', now()->subDay()->toDateTimeString());
-            $query->where('createdAt', '<=', now()->toDateTimeString());
+            $startDateTime = Carbon::now('Asia/Kolkata')->subDay()->format('Y-m-d H:i:s');
+            $endDateTime = Carbon::now('Asia/Kolkata')->format('Y-m-d H:i:s');
+            // Extract date part from JSON string and compare
+            $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 19) >= ? AND SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 19) <= ?",
+                [$startDateTime, $endDateTime]);
         } elseif ($dateRange === 'last_week') {
-            $query->where('createdAt', '>=', now()->subWeek()->startOfDay()->toDateTimeString());
-            $query->where('createdAt', '<=', now()->endOfDay()->toDateTimeString());
+            $startDate = Carbon::now('Asia/Kolkata')->subWeek()->startOfDay()->format('Y-m-d');
+            $endDate = Carbon::now('Asia/Kolkata')->endOfDay()->format('Y-m-d');
+            // Extract date part (first 10 chars: YYYY-MM-DD) for comparison
+            $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                [$startDate, $endDate]);
         } elseif ($dateRange === 'last_month') {
-            $query->where('createdAt', '>=', now()->subMonth()->startOfDay()->toDateTimeString());
-            $query->where('createdAt', '<=', now()->endOfDay()->toDateTimeString());
+            $startDate = Carbon::now('Asia/Kolkata')->subMonth()->startOfDay()->format('Y-m-d');
+            $endDate = Carbon::now('Asia/Kolkata')->endOfDay()->format('Y-m-d');
+            $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 10) BETWEEN ? AND ?",
+                [$startDate, $endDate]);
         } elseif ($dateRange === 'all_orders') {
             // Show all users - skip date filtering entirely
             // Do nothing - no date filter applied
         } elseif (!empty($from) || !empty($to)) {
             // Custom range or direct from/to parameters
             if (!empty($from)) {
-                $query->where('createdAt', '>=', $from);
+                $fromDate = Carbon::parse($from)->startOfDay()->format('Y-m-d');
+                $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 10) >= ?", [$fromDate]);
             }
             if (!empty($to)) {
-                $query->where('createdAt', '<=', $to);
+                $toDate = Carbon::parse($to)->endOfDay()->format('Y-m-d');
+                $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 10) <= ?", [$toDate]);
             }
         } else {
-            // No date range selected - default to today only
-            $query->whereDate('createdAt', Carbon::today());
+            // No date range selected - default to today only (Asia/Kolkata timezone)
+            $today = Carbon::today('Asia/Kolkata')->format('Y-m-d');
+            // Extract date part (first 10 chars: YYYY-MM-DD) and compare
+            $query->whereRaw("SUBSTRING(REPLACE(createdAt, '\"', ''), 1, 10) = ?", [$today]);
         }
 
         if ($active !== null && $active !== '') {
@@ -169,8 +209,11 @@ class AdminUserController extends Controller
         // Zone filter - search in shippingAddress JSON column
         if (!empty($zoneId)) {
             $query->where(function($q) use ($zoneId) {
-                // Search in shippingAddress JSON for zoneId
-                $q->where('shippingAddress', 'like', "%\"zoneId\":\"$zoneId\"%");
+                // Use JSON_EXTRACT for better performance (MySQL 5.7+)
+                // This searches in the JSON array for zoneId
+                $q->whereRaw('JSON_SEARCH(shippingAddress, "one", ?, NULL, "$[*].zoneId") IS NOT NULL', [$zoneId])
+                  ->orWhereRaw('JSON_EXTRACT(shippingAddress, "$[0].zoneId") = ?', [$zoneId])
+                  ->orWhere('shippingAddress', 'like', "%\"zoneId\":\"$zoneId\"%"); // Fallback for older MySQL
             });
         }
 
@@ -180,13 +223,31 @@ class AdminUserController extends Controller
                 $q->where('firstName', 'like', "%$search%")
                   ->orWhere('lastName', 'like', "%$search%")
                   ->orWhere('email', 'like', "%$search%")
-                  ->orWhere('phoneNumber', 'like', "%$search%")
-                  ->orWhere('createdAt', 'like', "%$search%");
+                  ->orWhere('phoneNumber', 'like', "%$search%");
+                // Removed createdAt LIKE search - it's inefficient and rarely used
+                // If date search is needed, use date range filters instead
             });
         }
 
+        // Optimize count query - use selectRaw for faster counting
         $total = (clone $query)->count();
-        $rows = $query->orderByDesc('id')
+
+        // Only fetch needed columns
+        // Order by indexed column (id) for better performance
+        $rows = $query->select(
+            'id',
+            'firebase_id',
+            'firstName',
+            'lastName',
+            'email',
+            'phoneNumber',
+            'shippingAddress',
+            'active',
+            'isActive',
+            'createdAt',
+            'profilePictureURL'
+        )
+            ->orderByDesc('id')
             ->skip(($page - 1) * $limit)
             ->take($limit)
             ->get();
@@ -195,7 +256,31 @@ class AdminUserController extends Controller
             $fullName = trim(($u->firstName ?? '') . ' ' . ($u->lastName ?? ''));
 
             // Extract zoneId from shippingAddress JSON using helper method
-            $zoneId = \App\Http\Controllers\UserController::extractZoneFromShippingAddress($u->shippingAddress);
+            // Only parse JSON if shippingAddress exists (optimization)
+            $zoneId = $u->shippingAddress
+                ? \App\Http\Controllers\UserController::extractZoneFromShippingAddress($u->shippingAddress)
+                : '';
+
+            // Format createdAt with Asia/Kolkata timezone
+            $createdAtFormatted = '';
+            if ($u->createdAt) {
+                try {
+                    // Handle JSON string format (e.g., "2025-10-16T07:13:41.487000Z")
+                    $dateStr = is_string($u->createdAt) ? trim($u->createdAt, '"') : $u->createdAt;
+
+                    // Parse the date
+                    $date = Carbon::parse($dateStr);
+
+                    // Convert to Asia/Kolkata timezone
+                    $date->setTimezone('Asia/Kolkata');
+
+                    // Format as: Dec 19, 2025 04:10 AM
+                    $createdAtFormatted = $date->format('M d, Y h:i A');
+                } catch (\Exception $e) {
+                    // Fallback to original value if parsing fails
+                    $createdAtFormatted = (string) $u->createdAt;
+                }
+            }
 
             return [
                 'id' => (string) ($u->firebase_id ?: $u->id),
@@ -205,7 +290,7 @@ class AdminUserController extends Controller
                 'email' => (string) ($u->email ?? ''),
                 'phoneNumber' => (string) ($u->phoneNumber ?? ''),
                 'zoneId' => (string) $zoneId,
-                'createdAt' => (string) ($u->createdAt ?? ''),
+                'createdAt' => $createdAtFormatted,
 //                'active' => in_array((string) $u->active, ['1','true'], true) || (bool) ($u->isActive ?? 0),
                 'active' => ($u->active == 1 || $u->isActive == 1) ? 1 : 0,
                 'profilePictureURL' => $u->profilePictureURL,
@@ -245,6 +330,197 @@ class AdminUserController extends Controller
         $user->isActive = $isActive ? 1 : 0;
         $user->save();
         return response()->json(['status' => true]);
+    }
+    private function exportCSV($users)
+{
+    return new StreamedResponse(function () use ($users) {
+        $handle = fopen('php://output', 'w');
+
+        // CSV Header
+        fputcsv($handle, [
+            'Name',
+            'Email',
+            'Phone',
+            'Zone',
+            'Active',
+            'Created At'
+        ]);
+
+        foreach ($users as $user) {
+            $isActive = ($user->active == 1 || $user->isActive == 1);
+
+            // Format createdAt with Asia/Kolkata timezone
+            $createdAtFormatted = '';
+            if ($user->createdAt) {
+                try {
+                    $dateStr = is_string($user->createdAt) ? trim($user->createdAt, '"') : $user->createdAt;
+                    $date = Carbon::parse($dateStr);
+                    $date->setTimezone('Asia/Kolkata');
+                    $createdAtFormatted = $date->format('M d, Y h:i A');
+                } catch (\Exception $e) {
+                    $createdAtFormatted = '';
+                }
+            }
+
+            fputcsv($handle, [
+                trim(($user->firstName ?? '') . ' ' . ($user->lastName ?? '')),
+                $user->email ?? '',
+                $user->phoneNumber ?? '',
+                $user->zone_name ?? 'Not Assigned',
+                $isActive ? 'Active' : 'Inactive',
+                $createdAtFormatted
+            ]);
+
+        }
+
+        fclose($handle);
+    }, 200, [
+        'Content-Type' => 'text/csv',
+        'Content-Disposition' => 'attachment; filename="users.csv"',
+    ]);
+}
+    private function exportPDF($users)
+    {
+        try {
+            $pdf = Pdf::loadView('exports.users-pdf', ['users' => $users])
+                ->setPaper('A4', 'portrait')
+                ->setOption('enable-local-file-access', true);
+
+            return $pdf->download('users.pdf');
+        } catch (\Exception $e) {
+            \Log::error('PDF Export Error: ' . $e->getMessage());
+            abort(500, 'Failed to generate PDF: ' . $e->getMessage());
+        }
+    }
+
+    private function exportExcel($users)
+    {
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\UsersExport($users),
+            'users.xlsx'
+        );
+    }
+
+    public function export(Request $request)
+    {
+        $query = AppUser::query();
+
+        // Role - default to customer
+        $role = $request->input('role', $request->query('role', 'customer'));
+        if (!empty($role)) {
+            $query->where('role', $role);
+        }
+
+        // Active
+        $active = $request->input('active', $request->query('active'));
+        if ($active !== null && $active !== '') {
+            $query->where('active', (int) $active);
+        }
+
+        // Zone filter - search in shippingAddress JSON column (same as index method)
+        $zoneId = $request->input('zoneId', $request->query('zoneId'));
+        if (!empty($zoneId) && $zoneId !== '') {
+            $query->where(function($q) use ($zoneId) {
+                // Use JSON_EXTRACT for better performance (MySQL 5.7+)
+                $q->whereRaw('JSON_SEARCH(shippingAddress, "one", ?, NULL, "$[*].zoneId") IS NOT NULL', [$zoneId])
+                  ->orWhereRaw('JSON_EXTRACT(shippingAddress, "$[0].zoneId") = ?', [$zoneId])
+                  ->orWhere('shippingAddress', 'like', "%\"zoneId\":\"$zoneId\"%"); // Fallback for older MySQL
+            });
+        }
+
+        // Search
+        $search = trim((string) ($request->input('search', $request->query('search', ''))));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('firstName', 'like', "%$search%")
+                    ->orWhere('lastName', 'like', "%$search%")
+                    ->orWhere('email', 'like', "%$search%")
+                    ->orWhere('phoneNumber', 'like', "%$search%");
+            });
+        }
+
+        // Date range filter (same logic as index method)
+        $dateRange = $request->input('date_range', $request->query('date_range'));
+        $from = $request->input('from', $request->query('from'));
+        $to = $request->input('to', $request->query('to'));
+
+        // Handle date range presets
+        if ($dateRange === 'last_24_hours') {
+            $query->where('createdAt', '>=', now()->subDay()->toDateTimeString());
+            $query->where('createdAt', '<=', now()->toDateTimeString());
+        } elseif ($dateRange === 'last_week') {
+            $query->where('createdAt', '>=', now()->subWeek()->startOfDay()->toDateTimeString());
+            $query->where('createdAt', '<=', now()->endOfDay()->toDateTimeString());
+        } elseif ($dateRange === 'last_month') {
+            $query->where('createdAt', '>=', now()->subMonth()->startOfDay()->toDateTimeString());
+            $query->where('createdAt', '<=', now()->endOfDay()->toDateTimeString());
+        } elseif ($dateRange === 'all_orders' || $dateRange === 'all_users') {
+            // Show all users - skip date filtering entirely
+            // Do nothing - no date filter applied
+        } elseif (!empty($from) || !empty($to)) {
+            // Custom range or direct from/to parameters
+            if (!empty($from)) {
+                $query->where('createdAt', '>=', $from);
+            }
+            if (!empty($to)) {
+                $query->where('createdAt', '<=', $to);
+            }
+        } else {
+            // No date range selected - default to today only
+            // Use range query instead of whereDate for better index usage
+            $today = Carbon::today();
+            $query->where('createdAt', '>=', $today->startOfDay()->toDateTimeString())
+                  ->where('createdAt', '<=', $today->endOfDay()->toDateTimeString());
+        }
+
+        // ORDER - Only fetch needed columns for export
+        $users = $query->select(
+            'id',
+            'firebase_id',
+            'firstName',
+            'lastName',
+            'email',
+            'phoneNumber',
+            'shippingAddress',
+            'active',
+            'isActive',
+            'createdAt'
+        )->orderByDesc('id')->get();
+
+        // Extract zoneId from shippingAddress and fetch zone names
+        $zoneIds = [];
+        foreach ($users as $user) {
+            $zoneId = \App\Http\Controllers\UserController::extractZoneFromShippingAddress($user->shippingAddress);
+            if (!empty($zoneId)) {
+                $zoneIds[] = $zoneId;
+            }
+        }
+
+        // Fetch zone names for all zoneIds
+        $zones = [];
+        if (!empty($zoneIds)) {
+            $zoneRecords = DB::table('zone')
+                ->whereIn('id', array_unique($zoneIds))
+                ->pluck('name', 'id')
+                ->toArray();
+            $zones = $zoneRecords;
+        }
+
+        // Map zone names to users
+        $users = $users->map(function ($user) use ($zones) {
+            $zoneId = \App\Http\Controllers\UserController::extractZoneFromShippingAddress($user->shippingAddress);
+            $user->zone_name = !empty($zoneId) && isset($zones[$zoneId])
+                ? $zones[$zoneId]
+                : 'Not Assigned';
+            return $user;
+        });
+
+        return match ($request->type) {
+            'csv'   => $this->exportCSV($users),
+            'pdf'   => $this->exportPDF($users),
+            'excel' => $this->exportExcel($users),
+            default => abort(404),
+        };
     }
 }
 

@@ -43,6 +43,11 @@ class ImpersonationSecurityMiddleware
     private function applyRateLimit(Request $request)
     {
         $adminId = auth()->id();
+        if (!$adminId) {
+            // If not authenticated, skip rate limiting (will be caught by auth middleware)
+            return;
+        }
+
         $ip = $request->ip();
 
         // Multiple rate limit keys for comprehensive protection
@@ -81,34 +86,110 @@ class ImpersonationSecurityMiddleware
      */
     private function validateRequestOrigin(Request $request)
     {
-        $allowedOrigins = [
+        // Get allowed origins from config (environment-specific)
+        $configOrigins = config('impersonation.allowed_origins', []);
+
+        // Build allowed origins list
+        $allowedOrigins = array_merge([
             'admin.jippymart.in',
             'localhost', // For development
             '127.0.0.1'  // For development
-        ];
+        ], $configOrigins);
+
+        // Extract domain from APP_URL if available
+        $appUrl = config('app.url', '');
+        if ($appUrl) {
+            $parsedUrl = parse_url($appUrl);
+            if (isset($parsedUrl['host'])) {
+                $allowedOrigins[] = $parsedUrl['host'];
+                // Also add without www if present
+                if (strpos($parsedUrl['host'], 'www.') === 0) {
+                    $allowedOrigins[] = substr($parsedUrl['host'], 4);
+                }
+            }
+        }
 
         $origin = $request->header('Origin');
         $referer = $request->header('Referer');
         $host = $request->getHost();
+        $serverName = $request->server('SERVER_NAME');
+
+        // Normalize values for comparison (remove protocol, ports, paths)
+        $normalizeDomain = function($value) {
+            if (empty($value)) return '';
+            // Remove protocol
+            $value = preg_replace('#^https?://#', '', $value);
+            // Remove port
+            $value = preg_replace('#:\d+#', '', $value);
+            // Remove path
+            $value = preg_replace('#/.*$#', '', $value);
+            // Remove www. prefix for comparison
+            $value = preg_replace('#^www\.#', '', $value);
+            return strtolower(trim($value));
+        };
+
+        $normalizedHost = $normalizeDomain($host);
+        $normalizedOrigin = $normalizeDomain($origin);
+        $normalizedReferer = $normalizeDomain($referer);
+        $normalizedServerName = $normalizeDomain($serverName);
 
         // Check if request is from allowed origin
         $isValidOrigin = false;
-        foreach ($allowedOrigins as $allowedOrigin) {
-            if (strpos($origin, $allowedOrigin) !== false ||
-                strpos($referer, $allowedOrigin) !== false ||
-                strpos($host, $allowedOrigin) !== false) {
-                $isValidOrigin = true;
-                break;
+
+        // First, check if it's a same-origin request (most secure)
+        if ($normalizedHost && (
+            $normalizedOrigin === $normalizedHost ||
+            $normalizedReferer === $normalizedHost ||
+            $normalizedServerName === $normalizedHost
+        )) {
+            $isValidOrigin = true;
+        } else {
+            // Check against allowed origins list
+            foreach ($allowedOrigins as $allowedOrigin) {
+                $normalizedAllowed = $normalizeDomain($allowedOrigin);
+                if (empty($normalizedAllowed)) continue;
+
+                if ($normalizedOrigin === $normalizedAllowed ||
+                    $normalizedReferer === $normalizedAllowed ||
+                    $normalizedHost === $normalizedAllowed ||
+                    $normalizedServerName === $normalizedAllowed ||
+                    strpos($normalizedOrigin, $normalizedAllowed) !== false ||
+                    strpos($normalizedReferer, $normalizedAllowed) !== false ||
+                    strpos($normalizedHost, $normalizedAllowed) !== false) {
+                    $isValidOrigin = true;
+                    break;
+                }
             }
         }
 
-        if (!$isValidOrigin && !app()->environment('local')) {
+        // In local environment, always allow
+        if (app()->environment('local')) {
+            return;
+        }
+
+        // If still not valid, log and check one more time with more lenient rules
+        if (!$isValidOrigin) {
+            // Additional check: if Origin/Referer is missing but request is from same host, allow it
+            // This handles cases where browsers don't send Origin header for same-origin requests
+            if (empty($origin) && empty($referer) && $normalizedHost) {
+                // Same-origin request without Origin header - likely valid
+                $isValidOrigin = true;
+            }
+        }
+
+        if (!$isValidOrigin) {
             Log::warning('Invalid impersonation request origin', [
                 'origin' => $origin,
                 'referer' => $referer,
                 'host' => $host,
+                'server_name' => $serverName,
+                'normalized_host' => $normalizedHost,
+                'normalized_origin' => $normalizedOrigin,
+                'normalized_referer' => $normalizedReferer,
+                'allowed_origins' => $allowedOrigins,
                 'ip' => $request->ip(),
-                'admin_id' => auth()->id()
+                'admin_id' => auth()->id(),
+                'app_url' => $appUrl
             ]);
 
             abort(403, 'Invalid request origin');
@@ -120,9 +201,10 @@ class ImpersonationSecurityMiddleware
      */
     private function logImpersonationAttempt(Request $request)
     {
+        $admin = auth()->user();
         $logData = [
             'admin_id' => auth()->id(),
-            'admin_email' => auth()->user()->email ?? 'unknown',
+            'admin_email' => $admin ? ($admin->email ?? 'unknown') : 'unknown',
             'restaurant_id' => $request->input('restaurant_id'),
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),

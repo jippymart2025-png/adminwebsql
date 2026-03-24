@@ -15,7 +15,8 @@ class RoleController extends Controller
     }
     public function index()
     {
-        $roles = Role::all();
+        // Only fetch needed columns
+        $roles = Role::select('id', 'role_name', 'created_at', 'updated_at')->get();
         return view("role.index")->with('roles',$roles);
     }
 

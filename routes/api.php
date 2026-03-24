@@ -89,6 +89,7 @@ Route::get('/app-users', [AdminUserController::class, 'index']);
 Route::post('/app-users', [AdminUserController::class, 'store']);
 Route::delete('/app-users/{id}', [AdminUserController::class, 'destroy']);
 Route::patch('/app-users/{id}/active', [AdminUserController::class, 'setActive']);
+Route::get('/app-users/export', [App\Http\Controllers\AdminUserController::class, 'export']);
 
 Route::get('/settings/mobile', [SettingsApiController::class, 'mobileSettings'])
     ->withoutMiddleware(['throttle:api']);  // REMOVE default throttle
